@@ -1,34 +1,14 @@
-"""Client utilities for accessing OpenAI-compatible chat completions.
-
-This module centralizes how we construct a client and pick a default model.
-It supports both real OpenAI endpoints and vLLM servers that implement the
-OpenAI-compatible API. Configuration is primarily read from environment
-variables for convenience, but can also be provided directly.
-
-Environment variables:
-  - OPENAI_API_KEY: API key used by the OpenAI SDK (also for vLLM if needed)
-  - VLLM_BASE_URL: Base URL of the vLLM/OpenAI-compatible server
-                   (default: http://localhost:8000/v1)
-  - VLLM_MODEL:    Model identifier to send in chat completion requests
-                   (default: meta-llama/Meta-Llama-3.1-8B-Instruct)
-
-Example:
-  from def_gen.client import LLMClient
-
-  client = LLMClient.from_env()
-  resp = client.openai.chat.completions.create(
-      model=client.model,
-      messages=[{"role": "user", "content": "Hello"}],
-  )
-"""
-
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
+
+from def_gen.utils import ChatMessage, llm_api_retry, safe_json_loads
+
 
 load_dotenv()
 
@@ -56,12 +36,16 @@ class LLMClient:
     via the ``openai`` attribute.
     """
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig, name: str | None = None):
         self._config = config
         self._client = OpenAI(base_url=config.base_url, api_key=config.api_key)
+        self.name = name or "undefined"
+
+    def __str__(self) -> str:
+        return f"LLMClient(name={self.name}, model={self.model}, base_url={self._config.base_url})"
 
     @property
-    def openai(self) -> OpenAI:
+    def client(self) -> OpenAI:
         """Return the underlying OpenAI client instance."""
 
         return self._client
@@ -71,6 +55,11 @@ class LLMClient:
         """Default model identifier used for requests."""
 
         return self._config.model
+    
+    def is_openai(self) -> bool:
+        """Heuristic to detect OpenAI's hosted API."""
+        url = (self._config.base_url or "").lower()
+        return "openai.com" in url
 
     @classmethod
     def from_env(cls) -> "LLMClient":
@@ -82,5 +71,51 @@ class LLMClient:
 
         base_url = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
-        model = os.getenv("VLLM_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+        model = os.getenv("VLLMmodel", "meta-llama/Meta-Llama-3.1-8B-Instruct")
         return cls(ModelConfig(base_url=base_url, api_key=api_key, model=model))
+
+    @llm_api_retry()
+    def generate_text(
+        self,
+        *,
+        messages: list[ChatMessage],
+    ) -> str:
+        """Perform a plain chat completion and return assistant content.
+
+        Args:
+            messages: Chat messages including system and user roles.
+
+        Returns:
+            Assistant message content as a string.
+        """
+
+        resp = self._client.chat.completions.create(            
+            model=self.model,
+            messages=messages,
+        )
+        return resp.choices[0].message.content or ""
+
+    @llm_api_retry()
+    def generate_json(
+        self,
+        json_schema: dict[str, Any],
+        *,
+        messages: list[ChatMessage],
+    ) -> dict[str, Any]:
+        """Generate a JSON object using the API's JSON mode and parse it.
+
+        Args:
+            json_schema: JSON schema defining the expected output structure.
+            messages: Chat messages culminating in a user request for JSON.
+
+        Returns:
+            Parsed JSON object.
+        """
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            response_format={"type": "json_schema", "strict": True, "schema": json_schema},
+        )
+        
+        text = resp.choices[0].message.content or "{}"
+        return safe_json_loads(text)
