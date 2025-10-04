@@ -1,0 +1,14 @@
+{
+	"title": "Definition",
+	"type": "object",
+	"properties": {
+		"definitie": {
+			"type": "string",
+			"description": "Woordenboekdefinitie van het opgegeven woord in de context van de voorbeeldzinnen."
+		}
+	},
+	"required": [
+		"definitie"
+	],
+	"additionalProperties": false
+}
