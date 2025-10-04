@@ -10,12 +10,10 @@ license = "Apache-2.0"
 license-files = ["LICEN[CS]E*"]
 requires-python = ">=3.12"
 dependencies = [
-    "datasets>=4.1.1",
-    "hf-transfer>=0.1.9",
-    "hf-xet>=1.1.10",
-    "llm-annotator>=0.2.1",
-    "lxml>=6.0.2",
-    "tqdm>=4.67.1",
+    "flashinfer-python>=0.3.1.post1,<0.4",
+    "llm-annotator>=0.2.4",
+    "lxml>=6.0.2,<7",
+    "tqdm>=4.67.1,<5",
 ]
 
 [dependency-groups]
