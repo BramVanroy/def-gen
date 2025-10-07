@@ -38,12 +38,10 @@ Je bent een lexicograaf. Jouw taak is om voor een gegeven zelfstandig naamwoord 
 - Stijl is neutraal, passend bij een woordenboek.
 - Belangrijk
 
-Je antwoordt in JSON-formaat met enkel een "definitie"-sleutel. Hieronder een voorbeeld voor het woord "aanwijsplaats".
+Je antwoordt in compact JSON-formaat met enkel een "definitie"-sleutel. Hieronder een voorbeeld voor het woord "aanwijsplaats".
 
 ```
-{{
-    "definitie": "plaats die aangewezen wordt in een sporttoernooi of wedstrijd, vaak een schaatswedstrijd, meestal voor een in principe eerder niet geselecteerde of geplaatste deelnemer of ploeg, veelal op grond van prestaties uit het verleden; aanwijsplek"
-}}
+{{"definitie": "plaats die aangewezen wordt in een sporttoernooi of wedstrijd, vaak een schaatswedstrijd, meestal voor een in principe eerder niet geselecteerde of geplaatste deelnemer of ploeg, veelal op grond van prestaties uit het verleden; aanwijsplek"}}
 ```
 
 ---

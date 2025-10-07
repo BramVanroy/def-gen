@@ -37,6 +37,7 @@ class Step:
         self.prompt = self.prompt or Path(self.prompt_file).read_text(encoding="utf-8")
         self.schema = self.schema or json.loads(Path(self.schema_file).read_text(encoding="utf-8"))
 
+
 class Pipeline:
     def __init__(self, steps: list[Step]):
         self.steps = steps
@@ -70,22 +71,22 @@ class Pipeline:
             step_idx = step.idx
             # Feedback must be preceded by definer or revisor
             if step.task == "feedback":
-                if self.steps[step_idx-1].task not in ["definer", "revisor", "feedback"]:
+                if self.steps[step_idx - 1].task not in ["definer", "revisor", "feedback"]:
                     raise ValueError("Feedback step must be preceded by definer, revisor, or feedback!")
             # Revisor must be preceded by feedback
             if step.task == "revisor":
-                if self.steps[step_idx-1].task != "feedback":
+                if self.steps[step_idx - 1].task != "feedback":
                     raise ValueError("Revisor step must be preceded by feedback!")
             # Judge must be preceded by definer or revisor
             if step.task == "judge":
-                if self.steps[step_idx-1].task not in ["definer", "revisor", "judge"]:
+                if self.steps[step_idx - 1].task not in ["definer", "revisor", "judge"]:
                     raise ValueError("Judge step must be preceded by another judge, definer or revisor!")
 
         # Cannot have more than one definer
         if sum(1 for s in self.steps if s.task == "definer") > 1:
             raise ValueError("Pipeline can only contain one definer step!")
 
-        done_tasks = set(list(Task))
+        done_tasks = set(Task)
         for step in reversed(self.steps):
             if step.task in done_tasks:
                 done_tasks.remove(step.task)
