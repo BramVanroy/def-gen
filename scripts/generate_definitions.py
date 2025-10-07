@@ -135,7 +135,7 @@ def main(
                 schema_file=str(TEMPLATES["feedback"]["schema_file"]),
                 post_field_renamer={k: f"{k}_llama" for k in FEEDBACK_FIELDS},
                 anno_run_kwargs={"sampling_params": {"max_tokens": 768}},
-            ),            
+            ),
             Step(
                 name="feedback-apertus-70b",
                 task="feedback",
@@ -171,7 +171,7 @@ def main(
                 schema_file=str(TEMPLATES["judge"]["schema_file"]),
                 post_field_renamer={k: f"{k}_judge_llama" for k in FEEDBACK_FIELDS},
                 anno_run_kwargs={"sampling_params": {"max_tokens": 768}},
-            ),            
+            ),
             Step(
                 name="judge-apertus-70b",
                 task="judge",
@@ -288,8 +288,11 @@ def main(
             # These dataset fields are a dictionary of "analyse" and "score"
             cols_to_split = list(step.post_field_renamer.values())
             for col in cols_to_split:
-                ds = ds.map(lambda x: {f"score_{col}": x[col]["score"], f"analyse_{col}": x[col]["analyse"]}, num_proc=4, remove_columns=[col])
-            
+                ds = ds.map(
+                    lambda x: {f"score_{col}": x[col]["score"], f"analyse_{col}": x[col]["analyse"]},
+                    num_proc=4,
+                    remove_columns=[col],
+                )
 
         ds.save_to_disk(pdout_done)
 
