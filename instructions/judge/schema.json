@@ -1,0 +1,99 @@
+{
+	"title": "JudgeAnalysis",
+	"type": "object",
+	"properties": {
+		"begrijpelijkheid": {
+			"type": "object",
+			"properties": {
+				"analyse": {
+					"type": "string"
+				},
+				"score": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 100
+				}
+			},
+			"required": ["analyse", "score"]
+		},
+		"betekenis": {
+			"type": "object",
+			"properties": {
+				"analyse": {
+					"type": "string"
+				},
+				"score": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 100
+				}
+			},
+			"required": ["analyse", "score"]
+		},
+		"gebruik": {
+			"type": "object",
+			"properties": {
+				"analyse": {
+					"type": "string"
+				},
+				"score": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 100
+				}
+			},
+			"required": ["analyse", "score"]
+		},
+		"structuur": {
+			"type": "object",
+			"properties": {
+				"analyse": {
+					"type": "string"
+				},
+				"score": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 100
+				}
+			},
+			"required": ["analyse", "score"]
+		},
+		"substitueerbaarheid": {
+			"type": "object",
+			"properties": {
+				"analyse": {
+					"type": "string"
+				},
+				"score": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 100
+				}
+			},
+			"required": ["analyse", "score"]
+		},
+		"correctheid": {
+			"type": "object",
+			"properties": {
+				"analyse": {
+					"type": "string"
+				},
+				"score": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 100
+				}
+			},
+			"required": ["analyse", "score"]
+		}
+	},
+	"required": [
+		"begrijpelijkheid",
+		"betekenis",
+		"gebruik",
+		"structuur",
+		"substitueerbaarheid",
+		"correctheid"
+	],
+	"additionalProperties": false
+}

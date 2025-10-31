@@ -45,6 +45,11 @@ def enable_quiet_mode():
         "RAY_LOG_TO_FILE": "0",
         "VLLM_LOGGING_LEVEL": "ERROR",
         "VLLM_CONFIGURE_LOGGING": "0",
+        # --- Gloo / glog ---
+        "GLOO_LOG_LEVEL": "ERROR",
+        "GLOG_minloglevel": "2",
+        # optional: avoid glog files if present
+        "GLOG_logtostderr": "1",
     }
     os.environ.update(env)
     # Also export to any subprocesses that might spawn after imports:
@@ -101,3 +106,14 @@ def enable_quiet_mode():
         atexit.register(_silence_c_stderr_on_exit)
     except Exception:
         pass
+
+
+class PathCompatibleEncoder(json.JSONEncoder):
+    """
+    JSON encoder that converts Path objects to strings.
+    """
+
+    def default(self, obj):
+        if isinstance(obj, Path):
+            return str(obj)
+        return super().default(obj)

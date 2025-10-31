@@ -1,0 +1,17 @@
+{
+	"title": "DefinitionRanking",
+	"type": "object",
+	"properties": {
+		"argumentatie": {
+			"type": "string"
+		},
+        "ranking": {
+			"enum": ["1 beter dan 2", "2 beter dan 1", "evenwaardig"]
+        }
+	},
+	"required": [
+		"argumentatie",
+		"ranking"
+	],
+	"additionalProperties": false
+}

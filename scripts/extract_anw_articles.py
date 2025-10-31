@@ -52,7 +52,7 @@ def get_lemma_definitions(article_element: Element):
             bet["voorbeelden"].append(voorbeeld.text)
 
         artikel["betekenissen"].append(bet)
-
+    artikel["meerdere_betekenissen"] = len(artikel["betekenissen"]) > 1
     return artikel
 
 
@@ -77,21 +77,40 @@ def extract_articles_from_xml(fin: str, fout: str | None = None, element_name: s
                 del elem.getparent()[0]
         del context
 
+    # Verify that article ID and PID, and definition PIDs are unique
+    ds = Dataset.from_json(str(pfout))
+    assert len(ds) == len(set(ds.unique("id")))
+    all_def_pids = [bet["pid"] for artikel in ds for bet in artikel["betekenissen"] if bet["pid"] is not None]
+    assert len(all_def_pids) == len(set(all_def_pids))
+
     return pfout
 
 
-def explode_in_definitions(artikel_betekenissen: list[dict]):
+def explode_in_definitions(samples: dict[list]) -> dict:
+    # Convert to a list of dictionaries first
+    samples = [dict(zip(samples, t)) for t in zip(*samples.values())]
     defs = {
+        "artikel_pid": [],
+        "artikel_id": [],
+        "artikel_meerdere_betekenissen": [],
+        "betekenis_pid": [],
+        "betekenis_id": [],
         "lemmavorm": [],
         "woordsoort": [],
         "definitie": [],
         "mini_definitie": [],
         "voorbeelden": [],
     }
-    for betekenissen in artikel_betekenissen:
+    for sample in samples:
+        betekenissen = sample["betekenissen"]
         for bet in betekenissen:
             voorbeelden = [vb for vb in bet["voorbeelden"] if vb is not None]
             if bet["definitie"] is not None and len(voorbeelden) > 0:
+                defs["artikel_pid"].append(sample["pid"])
+                defs["artikel_id"].append(sample["id"])
+                defs["artikel_meerdere_betekenissen"].append(sample["meerdere_betekenissen"])
+                defs["betekenis_pid"].append(bet["pid"])
+                defs["betekenis_id"].append(bet["id"])
                 defs["lemmavorm"].append(bet["lemmavorm"])
                 defs["woordsoort"].append(bet["woordsoort"])
                 defs["definitie"].append(bet["definitie"])
@@ -103,20 +122,23 @@ def explode_in_definitions(artikel_betekenissen: list[dict]):
 
 def main(fin: str, num_workers: int | None = None):
     # First extract articles as separate items in the JSONL file
-    pfout = extract_articles_from_xml(fin)
+    pfout = Path(fin).parent.joinpath("anw_lemma_articles.jsonl")
+
+    if not pfout.exists():
+        pfout = extract_articles_from_xml(fin)
 
     # Then extract the definitions from the articles
     ds = Dataset.from_json(str(pfout))
     print(ds)
     ds = ds.filter(lambda s: len(s["betekenissen"]) > 0, num_proc=num_workers, desc="Filtering empty definitions")
+
     print("After filtering empty", ds)
     ds_defs = ds.map(
         explode_in_definitions,
         num_proc=num_workers,
-        batched=True,
-        input_columns="betekenissen",
-        remove_columns=ds.column_names,
         desc="Exploding definitions",
+        remove_columns=ds.column_names,
+        batched=True,
     )
     print(ds_defs)
 

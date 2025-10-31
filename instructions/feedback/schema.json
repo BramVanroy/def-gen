@@ -1,0 +1,29 @@
+{
+	"title": "FeedbackAnalysis",
+	"type": "object",
+	"properties": {
+		"begrijpelijkheid": {
+			"type": "string"
+		},
+		"betekenis": {
+			"type": "string"
+		},
+		"gebruik": {
+			"type": "string"
+		},
+		"structuur": {
+			"type": "string"
+		},
+		"substitueerbaarheid": {
+			"type": "string"
+		},
+		"correctheid": {
+			"type": "string"
+		},		
+		"revisie-nodig": {
+			"type": "boolean"
+		}
+	},
+	"required": ["revisie-nodig"],
+	"additionalProperties": false
+}

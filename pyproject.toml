@@ -10,8 +10,13 @@ license = "Apache-2.0"
 license-files = ["LICEN[CS]E*"]
 requires-python = ">=3.12"
 dependencies = [
-    "llm-annotator>=0.2.6",
+    "choix>=0.4.1",
+    "krippendorff>=0.8.1",
+    "llm-annotator>=0.3.2",
     "lxml>=6.0.2,<7",
+    "openpyxl>=3.1.5",
+    "pingouin>=0.5.5,<0.6",
+    "statsmodels>=0.14.5",
     "tqdm>=4.67.1,<5",
 ]
 

@@ -1,6 +1,7 @@
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from enum import StrEnum
+from os import PathLike
 from pathlib import Path
 
 
@@ -9,6 +10,7 @@ class Task(StrEnum):
     feedback = "feedback"
     revisor = "revisor"
     judge = "judge"
+    ranker = "ranker"
 
 
 @dataclass(slots=True)
@@ -16,10 +18,10 @@ class Step:
     name: str
     task: Task
     model_name: str
-    prompt: str | None = None
-    prompt_file: str | None = None
+    file_directory: str | PathLike | None = None
+    full_prompt_template: str | None = None
+    prompt_template_prefix: str = ""
     schema: str | None = None
-    schema_file: str | None = None
     idx: int = -1
     last_of_task: bool = None
     post_field_renamer: dict[str, str] = field(default_factory=dict)
@@ -27,15 +29,35 @@ class Step:
     anno_run_kwargs: dict = field(default_factory=dict)
 
     def __post_init__(self):
-        if self.prompt and self.prompt_file:
+        if self.full_prompt_template and self.file_directory:
             raise ValueError("Only one of prompt or prompt_file should be provided.")
-        if self.schema and self.schema_file:
+        if self.prompt_template_prefix and self.file_directory:
+            raise ValueError("Only one of prefix or prompt_file should be provided.")
+        if self.schema and self.file_directory:
             raise ValueError("Only one of schema or schema_file should be provided.")
-        if not self.prompt and not self.prompt_file:
+        if not self.full_prompt_template and not self.file_directory:
             raise ValueError("One of prompt or prompt_file should be provided.")
 
-        self.prompt = self.prompt or Path(self.prompt_file).read_text(encoding="utf-8")
-        self.schema = self.schema or json.loads(Path(self.schema_file).read_text(encoding="utf-8"))
+        self.file_directory = Path(self.file_directory) if self.file_directory else None
+        if self.file_directory:
+            if not self.file_directory.exists():
+                raise ValueError(f"Provided file_directory {self.file_directory} does not exist!")
+
+            shared_file = self.file_directory / "shared.md"
+            if shared_file.exists():
+                self.prompt_template_prefix = shared_file.read_text(encoding="utf-8")
+
+            prompt_file = self.file_directory / "specific.md"
+            if not prompt_file.exists():
+                raise ValueError(f"Prompt file {prompt_file} does not exist!")
+            self.full_prompt_template = self.prompt_template_prefix + prompt_file.read_text(encoding="utf-8")
+
+            schema_file = self.file_directory / "schema.json"
+            if schema_file.exists():
+                self.schema = json.loads(Path(schema_file).read_text(encoding="utf-8"))
+
+    def __repr__(self):
+        return f"Step(idx={self.idx}, name={self.name}, task={self.task}, model_name={self.model_name})"
 
 
 class Pipeline:
@@ -54,6 +76,15 @@ class Pipeline:
     def __getitem__(self, idx):
         return self.steps[idx]
 
+    def __contains__(self, item: Step | str) -> bool:
+        if isinstance(item, str):
+            return any(step.task == item for step in self.steps)
+
+        if isinstance(item, Step):
+            return item in self.steps
+
+        return False
+
     def _verify_steps(self):
         # Names have to be unique
         names = [s.name for s in self.steps]
@@ -63,28 +94,36 @@ class Pipeline:
         if any(s.task not in Task for s in self.steps):
             raise ValueError(f"Step tasks must be one of {list(Task)}!")
 
-        # First step has to be definer
-        if self.steps[0].task != "definer":
-            raise ValueError("First step has to be 'definer'!")
-
+        saw_definer = False
         for step in self.steps:
             step_idx = step.idx
+            if step.task == "definer":
+                if saw_definer:
+                    raise ValueError("Pipeline can only contain one definer step!")
+                saw_definer = True
+                if step_idx != 0:
+                    raise ValueError("Definer step must be the first step!")
             # Feedback must be preceded by definer or revisor
-            if step.task == "feedback":
+            elif step.task == "feedback":
                 if self.steps[step_idx - 1].task not in ["definer", "revisor", "feedback"]:
                     raise ValueError("Feedback step must be preceded by definer, revisor, or feedback!")
+                if not saw_definer:
+                    raise ValueError("Feedback step must be preceded (somewhere) by a definer!")
             # Revisor must be preceded by feedback
-            if step.task == "revisor":
+            elif step.task == "revisor":
                 if self.steps[step_idx - 1].task != "feedback":
                     raise ValueError("Revisor step must be preceded by feedback!")
+                if not saw_definer:
+                    raise ValueError("Revisor step must be preceded (somewhere) by a definer!")
             # Judge must be preceded by definer or revisor
-            if step.task == "judge":
-                if self.steps[step_idx - 1].task not in ["definer", "revisor", "judge"]:
-                    raise ValueError("Judge step must be preceded by another judge, definer or revisor!")
-
-        # Cannot have more than one definer
-        if sum(1 for s in self.steps if s.task == "definer") > 1:
-            raise ValueError("Pipeline can only contain one definer step!")
+            elif step.task == "judge":
+                if self.steps[step_idx - 1].task not in ["definer", "revisor", "judge", "ranker"]:
+                    raise ValueError("Judge step must be preceded by another judge, definer, ranker or revisor!")
+                if not saw_definer:
+                    raise ValueError("Judge step must be preceded (somewhere) by a definer!")
+            elif step.task == "ranker":
+                if not saw_definer:
+                    raise ValueError("Ranker step must be preceded (somewhere) by a definer!")
 
         done_tasks = set(Task)
         for step in reversed(self.steps):
@@ -95,3 +134,6 @@ class Pipeline:
                 step.last_of_task = False
             if not done_tasks:
                 break
+
+    def to_dict(self) -> dict:
+        return {"steps": [asdict(step) for step in self.steps]}

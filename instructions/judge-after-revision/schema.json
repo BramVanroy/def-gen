@@ -6,15 +6,12 @@
 			"type": "object",
 			"properties": {
 				"analyse": {
-					"type": "string",
-					"description": "Korte analyse van de begrijpelijkheid en het woordgebruik (max 50 woorden).",
-					"maxLength": 200
+					"type": "string"
 				},
 				"score": {
 					"type": "integer",
 					"minimum": 0,
-					"maximum": 10,
-					"description": "Score van 0 (slecht) tot 10 (uitmuntend)."
+					"maximum": 100
 				}
 			},
 			"required": ["analyse", "score"]
@@ -23,15 +20,12 @@
 			"type": "object",
 			"properties": {
 				"analyse": {
-					"type": "string",
-					"description": "Korte analyse van de betekenis en identificatie (max 50 woorden).",
-					"maxLength": 200
+					"type": "string"
 				},
 				"score": {
 					"type": "integer",
 					"minimum": 0,
-					"maximum": 10,
-					"description": "Score van 0 (slecht) tot 10 (uitmuntend)."
+					"maximum": 100
 				}
 			},
 			"required": ["analyse", "score"]
@@ -40,15 +34,12 @@
 			"type": "object",
 			"properties": {
 				"analyse": {
-					"type": "string",
-					"description": "Korte analyse van gebaseerd op gebruik (max 50 woorden).",
-					"maxLength": 200
+					"type": "string"
 				},
 				"score": {
 					"type": "integer",
 					"minimum": 0,
-					"maximum": 10,
-					"description": "Score van 0 (slecht) tot 10 (uitmuntend)."
+					"maximum": 100
 				}
 			},
 			"required": ["analyse", "score"]
@@ -57,15 +48,12 @@
 			"type": "object",
 			"properties": {
 				"analyse": {
-					"type": "string",
-					"description": "Korte analyse van structuur en formulering (max 50 woorden).",
-					"maxLength": 200
+					"type": "string"
 				},
 				"score": {
 					"type": "integer",
 					"minimum": 0,
-					"maximum": 10,
-					"description": "Score van 0 (slecht) tot 10 (uitmuntend)."
+					"maximum": 100
 				}
 			},
 			"required": ["analyse", "score"]
@@ -74,15 +62,12 @@
 			"type": "object",
 			"properties": {
 				"analyse": {
-					"type": "string",
-					"description": "Korte analyse van substitueerbaarheid (max 50 woorden).",
-					"maxLength": 200
+					"type": "string"
 				},
 				"score": {
 					"type": "integer",
 					"minimum": 0,
-					"maximum": 10,
-					"description": "Score van 0 (slecht) tot 10 (uitmuntend)."
+					"maximum": 100
 				}
 			},
 			"required": ["analyse", "score"]
@@ -91,15 +76,12 @@
 			"type": "object",
 			"properties": {
 				"analyse": {
-					"type": "string",
-					"description": "Korte analyse van correctheid (max 50 woorden).",
-					"maxLength": 200
+					"type": "string"
 				},
 				"score": {
 					"type": "integer",
 					"minimum": 0,
-					"maximum": 10,
-					"description": "Score van 0 (slecht) tot 10 (uitmuntend)."
+					"maximum": 100
 				}
 			},
 			"required": ["analyse", "score"]

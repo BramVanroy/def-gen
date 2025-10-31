@@ -1,0 +1,25 @@
+{
+	"title": "DefinitionRanking",
+	"type": "object",
+	"properties": {
+		"argumentatie": {
+			"type": "string"
+		},
+        "eerste-plaats": {
+			"enum": ["Definitie 1", "Definitie 2", "Definitie 3"]
+        },
+		"tweede-plaats": {
+			"enum": ["Definitie 1", "Definitie 2", "Definitie 3"]
+		},
+		"derde-plaats": {
+			"enum": ["Definitie 1", "Definitie 2", "Definitie 3"]
+		}
+	},
+	"required": [
+		"argumentatie",
+		"eerste-plaats",
+		"tweede-plaats",
+		"derde-plaats"
+	],
+	"additionalProperties": false
+}

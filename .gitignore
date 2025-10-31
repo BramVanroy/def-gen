@@ -9,6 +9,10 @@ models/
 prompts/
 data/
 
+*.xlsx
+*.csv
+*.tsv
+
 uv.lock
 .ruff_cache
 .venv

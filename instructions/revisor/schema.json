@@ -1,0 +1,17 @@
+{
+	"title": "RevisedDefinition",
+	"type": "object",
+	"properties": {
+        "samenvatting-feedback": {
+            "type": "string"
+        },
+		"nieuwe-definitie": {
+			"type": "string"
+		}
+	},
+	"required": [
+        "samenvatting-feedback",
+		"nieuwe-definitie"
+	],
+	"additionalProperties": false
+}

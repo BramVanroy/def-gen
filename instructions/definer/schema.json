@@ -3,8 +3,7 @@
 	"type": "object",
 	"properties": {
 		"definitie": {
-			"type": "string",
-			"description": "Woordenboekdefinitie van het opgegeven woord in de context van de voorbeeldzinnen."
+			"type": "string"
 		}
 	},
 	"required": [
