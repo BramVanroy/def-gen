@@ -16,7 +16,9 @@
       "file_directory": "instructions/definer",
       "provider": "vllm-offline",
       "client_init_kwargs": {
-        "max_model_len": 4096
+        "max_model_len": 4096,
+        "language_model_only": true,
+        "extra_vllm_kwargs": {"kv_cache_dtype": "fp8"}
       },
       "client_run_kwargs": {
         "temperature": 0.6,
@@ -38,7 +40,9 @@
       "file_directory": "instructions/judge",
       "provider": "vllm-offline",
       "client_init_kwargs": {
-        "max_model_len": 6400
+        "max_model_len": 6400,
+        "language_model_only": true,
+        "extra_vllm_kwargs": {"kv_cache_dtype": "fp8"}
       },
       "client_run_kwargs": {
         "temperature": 0.6,
