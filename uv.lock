@@ -1014,10 +1014,10 @@ requires-dist = [
     { name = "choix", specifier = ">=0.4.1" },
     { name = "datasets", specifier = ">=4.4.1" },
     { name = "krippendorff", specifier = ">=0.8.1" },
-    { name = "llm-annotator", specifier = "==0.10.6" },
-    { name = "llm-annotator", extras = ["anthropic"], marker = "extra == 'anthropic'", specifier = "==0.10.6" },
-    { name = "llm-annotator", extras = ["openai"], marker = "extra == 'openai'", specifier = "==0.10.6" },
-    { name = "llm-annotator", extras = ["vllm"], marker = "extra == 'vllm'", specifier = "==0.10.6" },
+    { name = "llm-annotator", specifier = "==0.10.7" },
+    { name = "llm-annotator", extras = ["anthropic"], marker = "extra == 'anthropic'", specifier = "==0.10.7" },
+    { name = "llm-annotator", extras = ["openai"], marker = "extra == 'openai'", specifier = "==0.10.7" },
+    { name = "llm-annotator", extras = ["vllm"], marker = "extra == 'vllm'", specifier = "==0.10.7" },
     { name = "lxml", specifier = ">=6.0.2,<7" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "openpyxl", specifier = ">=3.1.5" },
@@ -1745,11 +1745,11 @@ wheels = [
 
 [[package]]
 name = "idna"
-version = "3.17"
+version = "3.18"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b9/28/99c51f664567218d824af024c0251650fb27e4ca066df188dab0769c5b91/idna-3.17.tar.gz", hash = "sha256:5eb0cb53bc467c12eadcf6de83163ad8527cec9416f44b9b61b19caedad2b87f", size = 196048, upload-time = "2026-05-28T14:32:38.55Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cd/63/9496c57188a2ee585e0f1db071d75089a11e98aa86eb99d9d7618fc1edce/idna-3.18.tar.gz", hash = "sha256:ffb385a7e039654cef1ab9ef32c6fafe283c0c0467bba1d9029738ce4a14a848", size = 196711, upload-time = "2026-06-02T14:34:07.794Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/a7/f76514cc40ad6234098ecdebda08732d75964776c51a42845b7da10649e2/idna-3.17-py3-none-any.whl", hash = "sha256:466e48829084efe2548012b855df21540b96f2e20e51bd124c851536556a592c", size = 65316, upload-time = "2026-05-28T14:32:37.035Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/5e/d4e9f1a599fb8e573b7b87160658329fbf28d19eac2718f51fc3def3aa5a/idna-3.18-py3-none-any.whl", hash = "sha256:7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2", size = 65455, upload-time = "2026-06-02T14:34:06.319Z" },
 ]
 
 [[package]]
@@ -2167,16 +2167,16 @@ wheels = [
 
 [[package]]
 name = "llm-annotator"
-version = "0.10.6"
+version = "0.10.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
     { name = "datasets" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/68/8b81e9bdaf9e91832e58641e3b7101373f1ff632f837892ba061b5a68e65/llm_annotator-0.10.6.tar.gz", hash = "sha256:6a58312b102c95093dd9eff4ae40beceacbcf7639a5be48ee3de93176f48f1ea", size = 331642, upload-time = "2026-06-02T12:45:57.785Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/c7/dc114ebe5b390bd4ec4907e1af575ee05c622eb48d9bc4c656e94c043bbf/llm_annotator-0.10.7.tar.gz", hash = "sha256:1f0e7e90fd7533d9a3585fb62a9c4ce6a912dd2ab5028a3e322ee6707b8a2e7c", size = 331671, upload-time = "2026-06-02T17:07:51.925Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/da/110a7b028fc36312fc9780fca3c426d16d0344d8fbaa686e9c964d335bf4/llm_annotator-0.10.6-py3-none-any.whl", hash = "sha256:95625d0746b0cb25da9c0c7ff3e0211b8a41c3cccb7c93f3123a5a838875644f", size = 81788, upload-time = "2026-06-02T12:45:56.432Z" },
+    { url = "https://files.pythonhosted.org/packages/68/f1/118412d7f5188bb7aed28e2f4b49d599bda8e953ac31075ea406a6744b9c/llm_annotator-0.10.7-py3-none-any.whl", hash = "sha256:83f48d1107e3f7d265cab3ff3decae1491685e7c4cae0c1c8280f95c41a6c8bb", size = 81810, upload-time = "2026-06-02T17:07:53.12Z" },
 ]
 
 [package.optional-dependencies]
