@@ -4,9 +4,6 @@ copilot-instructions.md
 !.github/workflows/
 output/
 outputs/
-config/
-!config/
-config/*
 !config/*.example.json
 wandb/
 models/

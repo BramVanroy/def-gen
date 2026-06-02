@@ -1,0 +1,62 @@
+{
+  "num_samples": null,
+  "min_num_examples": 3,
+  "overwrite": false,
+  "batch_size": 64,
+  "num_proc": 4,
+  "root_output_dir": "outputs/5examples-qwen",
+  "hub_id": "BramVanroy/anw-15-4-2026-monosemous-nouns-5examples-qwen",
+  "seed": 42,
+  "steps": [
+    {
+      "name": "definer-qwen36-27b-fp8",
+      "task": "definer",
+      "model_name": "Qwen/Qwen3.6-27B-FP8",
+      "file_directory": "instructions/definer",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 4096
+      },
+      "client_run_kwargs": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 0.0,
+        "repetition_penalty": 1.0,
+        "max_tokens": 384,
+        "chat_template_kwargs": {"enable_thinking": true}
+      },
+      "post_field_renamer": {
+        "definitie": "definitie-qwen"
+      }
+    },
+    {
+      "name": "judge-qwen36-27b-fp8",
+      "task": "judge",
+      "model_name": "Qwen/Qwen3.6-27B-FP8",
+      "file_directory": "instructions/judge",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 6400
+      },
+      "client_run_kwargs": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 0.0,
+        "repetition_penalty": 1.0,
+        "max_tokens": 1024,
+        "chat_template_kwargs": {"enable_thinking": true}
+      },
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_qwen",
+        "betekenis": "betekenis_qwen",
+        "gebruik": "gebruik_qwen",
+        "structuur": "structuur_qwen",
+        "substitueerbaarheid": "substitueerbaarheid_qwen",
+        "correctheid": "correctheid_qwen",
+        "revisie-nodig": "revisie-nodig_qwen"
+      }
+    }
+  ]
+}
