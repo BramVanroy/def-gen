@@ -13,7 +13,7 @@ dependencies = [
     "choix>=0.4.1",
     "datasets>=4.4.1",
     "krippendorff>=0.8.1",
-    "llm-annotator",
+    "llm-annotator==0.10.6",
     "lxml>=6.0.2,<7",
     "numpy>=2.2.6",
     "openpyxl>=3.1.5",
@@ -25,13 +25,13 @@ dependencies = [
 
 [project.optional-dependencies]
 vllm = [
-    "llm-annotator[vllm]"
+    "llm-annotator[vllm]==0.10.6"
 ]
 anthropic = [
-    "llm-annotator[anthropic]"
+    "llm-annotator[anthropic]==0.10.6"
 ]
 openai = [
-    "llm-annotator[openai]"
+    "llm-annotator[openai]==0.10.6"
 ]
 
 [project.urls]

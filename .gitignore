@@ -5,6 +5,9 @@ copilot-instructions.md
 output/
 outputs/
 config/
+!config/
+config/*
+!config/*.example.json
 wandb/
 models/
 prompts/
