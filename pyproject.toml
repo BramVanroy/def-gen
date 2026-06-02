@@ -12,12 +12,22 @@ requires-python = ">=3.12"
 dependencies = [
     "choix>=0.4.1",
     "krippendorff>=0.8.1",
-    "llm-annotator>=0.9.0",
     "lxml>=6.0.2,<7",
     "openpyxl>=3.1.5",
     "pingouin>=0.5.5,<0.6",
     "statsmodels>=0.14.5",
-    "tqdm>=4.67.1,<5",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+vllm = [
+    "llm-annotator[vllm]"
+]
+anthropic = [
+    "llm-annotator[anthropic]"
+]
+openai = [
+    "llm-annotator[openai]"
 ]
 
 [project.urls]
