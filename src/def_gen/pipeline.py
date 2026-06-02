@@ -3,6 +3,7 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from os import PathLike
 from pathlib import Path
+from typing import Literal
 
 
 class Task(StrEnum):
@@ -18,15 +19,17 @@ class Step:
     name: str
     task: Task
     model_name: str
+    provider: Literal["openai", "anthropic", "vllm", "vllm-offline"]
     file_directory: str | PathLike | None = None
     full_prompt_template: str | None = None
     prompt_template_prefix: str = ""
     schema: str | None = None
+    system_message: str | None = None
     idx: int = -1
     last_of_task: bool = None
     post_field_renamer: dict[str, str] = field(default_factory=dict)
-    anno_init_kwargs: dict = field(default_factory=dict)
-    anno_run_kwargs: dict = field(default_factory=dict)
+    client_init_kwargs: dict = field(default_factory=dict)
+    client_run_kwargs: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if self.full_prompt_template and self.file_directory:

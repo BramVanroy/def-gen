@@ -1,0 +1,207 @@
+{
+  "num_samples": null,
+  "min_num_examples": 3,
+  "overwrite": false,
+  "batch_size": 256,
+  "num_proc": 10,
+  "root_output_dir": "outputs/anw_custom_pipeline",
+  "hub_id": "BramVanroy/anw-defgen-{num_samples}",
+  "workflow": "with-revision",
+  "seed": 42,
+  "steps": [
+    {
+      "name": "definer-gemma-27b",
+      "task": "definer",
+      "model_name": "RedHatAI/gemma-3-27b-it-FP8-dynamic",
+      "file_directory": "instructions/definer",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 2048
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "presence_penalty": 0.1,
+        "max_tokens": 384
+      },
+      "post_field_renamer": {
+        "definitie": "definitie-v1"
+      }
+    },
+    {
+      "name": "feedback-gemma-27b",
+      "task": "feedback",
+      "model_name": "RedHatAI/gemma-3-27b-it-FP8-dynamic",
+      "file_directory": "instructions/feedback",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 3000
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "presence_penalty": 0.1,
+        "max_tokens": 1024
+      },
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_gemma",
+        "betekenis": "betekenis_gemma",
+        "gebruik": "gebruik_gemma",
+        "structuur": "structuur_gemma",
+        "substitueerbaarheid": "substitueerbaarheid_gemma",
+        "correctheid": "correctheid_gemma",
+        "revisie-nodig": "revisie-nodig_gemma"
+      }
+    },
+    {
+      "name": "feedback-qwen-32b",
+      "task": "feedback",
+      "model_name": "RedHatAI/Qwen3-32B-FP8-dynamic",
+      "file_directory": "instructions/feedback",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 3000,
+        "max_num_batched_tokens": 8192,
+        "max_num_seqs": 96
+      },
+      "client_run_kwargs": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "presence_penalty": 0.1,
+        "max_tokens": 1024
+      },
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_qwen",
+        "betekenis": "betekenis_qwen",
+        "gebruik": "gebruik_qwen",
+        "structuur": "structuur_qwen",
+        "substitueerbaarheid": "substitueerbaarheid_qwen",
+        "correctheid": "correctheid_qwen",
+        "revisie-nodig": "revisie-nodig_qwen"
+      }
+    },
+    {
+      "name": "revisor-gemma-27b",
+      "task": "revisor",
+      "model_name": "RedHatAI/gemma-3-27b-it-FP8-dynamic",
+      "file_directory": "instructions/revisor",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 3000
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "presence_penalty": 0.1,
+        "max_tokens": 480
+      },
+      "post_field_renamer": {
+        "nieuwe-definitie": "definitie-v2"
+      }
+    },
+    {
+      "name": "judge-gemma-27b",
+      "task": "judge",
+      "model_name": "RedHatAI/gemma-3-27b-it-FP8-dynamic",
+      "file_directory": "instructions/judge-after-revision",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 3200
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "presence_penalty": 0.1,
+        "max_tokens": 1024
+      },
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_judge_gemma",
+        "betekenis": "betekenis_judge_gemma",
+        "gebruik": "gebruik_judge_gemma",
+        "structuur": "structuur_judge_gemma",
+        "substitueerbaarheid": "substitueerbaarheid_judge_gemma",
+        "correctheid": "correctheid_judge_gemma"
+      }
+    },
+    {
+      "name": "ranker-gemma-27b",
+      "task": "ranker",
+      "model_name": "RedHatAI/gemma-3-27b-it-FP8-dynamic",
+      "file_directory": "instructions/ranker-after-revision",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 3200
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "presence_penalty": 0.1,
+        "max_tokens": 768
+      },
+      "post_field_renamer": {
+        "argumentatie": "argumentatie_ranker_gemma",
+        "eerste-plaats": "eerste-plaats_ranker_gemma",
+        "tweede-plaats": "tweede-plaats_ranker_gemma",
+        "derde-plaats": "derde-plaats_ranker_gemma"
+      }
+    },
+    {
+      "name": "judge-qwen-32b",
+      "task": "judge",
+      "model_name": "RedHatAI/Qwen3-32B-FP8-dynamic",
+      "file_directory": "instructions/judge-after-revision",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 3200,
+        "max_num_batched_tokens": 8192,
+        "max_num_seqs": 16
+      },
+      "client_run_kwargs": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "presence_penalty": 0.1,
+        "max_tokens": 1024
+      },
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_judge_qwen",
+        "betekenis": "betekenis_judge_qwen",
+        "gebruik": "gebruik_judge_qwen",
+        "structuur": "structuur_judge_qwen",
+        "substitueerbaarheid": "substitueerbaarheid_judge_qwen",
+        "correctheid": "correctheid_judge_qwen"
+      }
+    },
+    {
+      "name": "ranker-qwen-32b",
+      "task": "ranker",
+      "model_name": "RedHatAI/Qwen3-32B-FP8-dynamic",
+      "file_directory": "instructions/ranker-after-revision",
+      "provider": "vllm-offline",
+      "client_init_kwargs": {
+        "max_model_len": 3200,
+        "max_num_batched_tokens": 8192,
+        "max_num_seqs": 16
+      },
+      "client_run_kwargs": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "presence_penalty": 0.1,
+        "max_tokens": 768
+      },
+      "post_field_renamer": {
+        "argumentatie": "argumentatie_ranker_qwen",
+        "eerste-plaats": "eerste-plaats_ranker_qwen",
+        "tweede-plaats": "tweede-plaats_ranker_qwen",
+        "derde-plaats": "derde-plaats_ranker_qwen"
+      }
+    }
+  ]
+}

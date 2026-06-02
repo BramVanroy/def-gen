@@ -1,0 +1,43 @@
+{
+  "num_samples": 5,
+  "min_num_examples": 3,
+  "overwrite": false,
+  "batch_size": 32,
+  "num_proc": 4,
+  "root_output_dir": "outputs/anw_api_clients",
+  "hub_id": null,
+  "seed": 42,
+  "steps": [
+    {
+      "name": "definer-openai",
+      "task": "definer",
+      "model_name": "gpt-5.4-nano",
+      "file_directory": "/home/bram/python/def-gen/instructions/definer",
+      "provider": "openai",
+      "client_run_kwargs": {
+        "max_tokens": 384
+      },
+      "post_field_renamer": {
+        "definitie": "definitie-v1"
+      }
+    },
+    {
+      "name": "judge-anthropic",
+      "task": "judge",
+      "model_name": "claude-haiku-4-5",
+      "file_directory": "/home/bram/python/def-gen/instructions/judge",
+      "provider": "anthropic",
+      "client_run_kwargs": {
+        "max_tokens": 768
+      },
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_judge_claude",
+        "betekenis": "betekenis_judge_claude",
+        "gebruik": "gebruik_judge_claude",
+        "structuur": "structuur_judge_claude",
+        "substitueerbaarheid": "substitueerbaarheid_judge_claude",
+        "correctheid": "correctheid_judge_claude"
+      }
+    }
+  ]
+}
