@@ -95,6 +95,7 @@ class Pipeline:
             raise ValueError(f"Step tasks must be one of {list(Task)}!")
 
         saw_definer = False
+        saw_feedback = False
         for step in self.steps:
             step_idx = step.idx
             if step.task == "definer":
@@ -103,27 +104,24 @@ class Pipeline:
                 saw_definer = True
                 if step_idx != 0:
                     raise ValueError("Definer step must be the first step!")
-            # Feedback must be preceded by definer or revisor
             elif step.task == "feedback":
-                if self.steps[step_idx - 1].task not in ["definer", "revisor", "feedback"]:
-                    raise ValueError("Feedback step must be preceded by definer, revisor, or feedback!")
                 if not saw_definer:
-                    raise ValueError("Feedback step must be preceded (somewhere) by a definer!")
-            # Revisor must be preceded by feedback
+                    raise ValueError("Feedback step must be preceded by definer somewhere!")
+                saw_feedback = True
             elif step.task == "revisor":
-                if self.steps[step_idx - 1].task != "feedback":
-                    raise ValueError("Revisor step must be preceded by feedback!")
+                if not saw_feedback:
+                    raise ValueError("Revisor step must be preceded by feedback somewhere!")
                 if not saw_definer:
-                    raise ValueError("Revisor step must be preceded (somewhere) by a definer!")
-            # Judge must be preceded by definer or revisor
+                    raise ValueError("Revisor step must be preceded by definer somewhere!")
             elif step.task == "judge":
-                if self.steps[step_idx - 1].task not in ["definer", "revisor", "judge", "ranker"]:
-                    raise ValueError("Judge step must be preceded by another judge, definer, ranker or revisor!")
                 if not saw_definer:
-                    raise ValueError("Judge step must be preceded (somewhere) by a definer!")
+                    raise ValueError("Judge step must be preceded by definer somewhere!")
             elif step.task == "ranker":
                 if not saw_definer:
-                    raise ValueError("Ranker step must be preceded (somewhere) by a definer!")
+                    raise ValueError("Ranker step must be preceded by definer somewhere!")
+
+        if not saw_definer:
+            raise ValueError("Pipeline must contain a definer step at the start!")
 
         done_tasks = set(Task)
         for step in reversed(self.steps):
