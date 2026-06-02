@@ -15,7 +15,6 @@ scratches/
 *.csv
 *.tsv
 
-uv.lock
 .ruff_cache
 .venv
 .code-workspace
