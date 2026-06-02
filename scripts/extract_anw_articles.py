@@ -2,7 +2,8 @@ import json
 from pathlib import Path
 from xml.etree.ElementTree import Element
 
-from datasets import Dataset
+from datasets import Dataset, Sequence, Value
+from datasets.features import Features
 from lxml import etree
 from tqdm import tqdm
 
@@ -18,7 +19,12 @@ def get_lemma_definitions(article_element: Element):
         dict: The article with its pid, id, and a list of betekenissen, each with their pid, id, lemmavorm, woordsoort, definitie, and minidefinitie.
     """
 
-    artikel = {"pid": int(article_element.attrib["pid"]), "id": int(article_element.attrib["ID"]), "betekenissen": []}
+    artikel = {
+        "pid": int(article_element.attrib["pid"]),
+        "id": int(article_element.attrib["ID"]),
+        "laatst-bewerkt": str(article_element.attrib.get("last-modified")),
+        "betekenissen": []
+    }
     # Loop over all Kernbetekenis elements
     for kernbetekenis_element in article_element.xpath(".//Kernbetekenis"):
         bet = {
@@ -92,6 +98,7 @@ def explode_in_definitions(samples: dict[list]) -> dict:
     defs = {
         "artikel_pid": [],
         "artikel_id": [],
+        "artikel_laatst_bewerkt": [],
         "artikel_meerdere_betekenissen": [],
         "betekenis_pid": [],
         "betekenis_id": [],
@@ -108,6 +115,9 @@ def explode_in_definitions(samples: dict[list]) -> dict:
             if bet["definitie"] is not None:
                 defs["artikel_pid"].append(sample["pid"])
                 defs["artikel_id"].append(sample["id"])
+                # Datasets has converted the date string to datetime
+                # so we convert it back to yyyy-mm-dd here
+                defs["artikel_laatst_bewerkt"].append(sample["laatst-bewerkt"].strftime('%Y-%m-%d'))
                 defs["artikel_meerdere_betekenissen"].append(sample["meerdere_betekenissen"])
                 defs["betekenis_pid"].append(bet["pid"])
                 defs["betekenis_id"].append(bet["id"])
