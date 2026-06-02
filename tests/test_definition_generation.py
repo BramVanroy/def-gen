@@ -100,7 +100,9 @@ def test_pipeline_step_config_client_kwargs_accepted() -> None:
     assert out.client_run_kwargs["max_tokens"] == 12
 
 
-def test_set_seed_calls_torch_and_numpy(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_set_seed_calls_torch_and_numpy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls = {"np_seed": None}
 
     monkeypatch.setattr(
@@ -141,7 +143,9 @@ def test_resolve_provider_uses_explicit_value() -> None:
 
 
 def test_resolve_provider_vllm_server_and_offline() -> None:
-    server = _make_step(client_init_kwargs={"base_url": "http://localhost:8000/v1"})
+    server = _make_step(
+        client_init_kwargs={"base_url": "http://localhost:8000/v1"}
+    )
     offline = _make_step()
 
     assert dg._resolve_provider(server) == "vllm"
@@ -186,7 +190,9 @@ def test_concat_feedback_skips_repeated_characters() -> None:
         "structuur_a": "aaaaa",
         "lemmavorm": "woord",
     }
-    feedback_cols = {"feedback-a": ["revisie-nodig_a", "gebruik_a", "structuur_a"]}
+    feedback_cols = {
+        "feedback-a": ["revisie-nodig_a", "gebruik_a", "structuur_a"]
+    }
 
     out = dg.concat_feedback(sample, feedback_cols)
 
@@ -225,7 +231,11 @@ def test_shuffle_definitions_is_deterministic() -> None:
 
 def test_check_rank_validity() -> None:
     sample_ok = {"c1": "Definitie 1", "c2": "Definitie 2", "c3": "Definitie 3"}
-    sample_bad = {"c1": "Definitie 1", "c2": "Definitie 1", "c3": "Definitie 3"}
+    sample_bad = {
+        "c1": "Definitie 1",
+        "c2": "Definitie 1",
+        "c3": "Definitie 3",
+    }
 
     assert dg.check_rank_validity(sample_ok, ["c1", "c2", "c3"])
     assert not dg.check_rank_validity(sample_bad, ["c1", "c2", "c3"])
@@ -335,7 +345,11 @@ class _FakePipeline:
         return item in self.steps
 
     def to_dict(self):
-        return {"steps": [{"name": step.name, "task": step.task} for step in self.steps]}
+        return {
+            "steps": [
+                {"name": step.name, "task": step.task} for step in self.steps
+            ]
+        }
 
 
 class _FakeAnnotator:
@@ -360,15 +374,21 @@ class _FakeAnnotator:
         return None
 
 
-def test_run_generation_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_run_generation_smoke(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _FakeAnnotator.init_calls = []
-    base_ds = _RunDataset([{"definitie": "Een voorbeeld definitie", "feedback": ""}])
+    base_ds = _RunDataset(
+        [{"definitie": "Een voorbeeld definitie", "feedback": ""}]
+    )
 
     fake_step = _make_step(name="definer-fake")
 
     monkeypatch.setattr(dg, "set_seed", lambda seed: None)
     monkeypatch.setattr(dg, "init_data", lambda **kwargs: base_ds)
-    monkeypatch.setattr(dg, "build_pipeline", lambda config: _FakePipeline([fake_step]))
+    monkeypatch.setattr(
+        dg, "build_pipeline", lambda config: _FakePipeline([fake_step])
+    )
     monkeypatch.setattr(dg, "Annotator", _FakeAnnotator)
     monkeypatch.setattr(dg, "_create_client", lambda step: object())
     monkeypatch.setattr(dg, "_build_runtime_options", lambda step: object())
@@ -396,7 +416,9 @@ def test_run_generation_pushes_formatted_hub_id(
 
     monkeypatch.setattr(dg, "set_seed", lambda seed: None)
     monkeypatch.setattr(dg, "init_data", lambda **kwargs: base_ds)
-    monkeypatch.setattr(dg, "build_pipeline", lambda config: _FakePipeline([fake_step]))
+    monkeypatch.setattr(
+        dg, "build_pipeline", lambda config: _FakePipeline([fake_step])
+    )
     monkeypatch.setattr(dg, "Annotator", _FakeAnnotator)
     monkeypatch.setattr(dg, "_create_client", lambda step: object())
     monkeypatch.setattr(dg, "_build_runtime_options", lambda step: object())

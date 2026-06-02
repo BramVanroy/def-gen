@@ -4,7 +4,10 @@ import pandas as pd
 
 
 def confusion_matrix(
-    df: pd.DataFrame, columns: Iterable[str], rownames: Iterable[str] | None = None, colnames: Iterable[str] | None = None
+    df: pd.DataFrame,
+    columns: Iterable[str],
+    rownames: Iterable[str] | None = None,
+    colnames: Iterable[str] | None = None,
 ) -> pd.DataFrame:
     """Compute confusion matrix between two raters.
 
@@ -16,5 +19,11 @@ def confusion_matrix(
     if len(columns) != 2:
         raise ValueError("Expected 2 columns to compute confusion matrix.")
 
-    conf = pd.crosstab(df[columns[0]], df[columns[1]], rownames=rownames, colnames=colnames, dropna=False)
+    conf = pd.crosstab(
+        df[columns[0]],
+        df[columns[1]],
+        rownames=rownames,
+        colnames=colnames,
+        dropna=False,
+    )
     return conf

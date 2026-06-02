@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from tqdm import trange
 
+
 def bootstrap_agreement(
     agreement_fn: Callable,
     df: pd.DataFrame,
@@ -38,7 +39,9 @@ def bootstrap_agreement(
         res = agreement_fn(resampled)
         for key in ci_keys:
             if key not in res:
-                raise ValueError(f"Key {key} not found in agreement function result.")
+                raise ValueError(
+                    f"Key {key} not found in agreement function result."
+                )
             if np.isnan(res[key]):
                 raise ValueError(f"{key} is NaN in bootstrap sample.")
             boot_results[key].append(res[key])

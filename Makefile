@@ -4,18 +4,18 @@ PACKAGE = src/def_gen
 
 quality:
 	uv run interrogate -vv
-	uv run ruff check $(PACKAGE) tests/ examples/
-	uv run ruff format --check $(PACKAGE) tests/ examples/
+	uv run ruff check $(PACKAGE) tests/
+	uv run ruff format --check $(PACKAGE) tests/
 
 style:
-	uv run ruff check $(PACKAGE) tests/ examples/ --fix
-	uv run ruff format $(PACKAGE) tests/ examples/
+	uv run ruff check $(PACKAGE) tests/ --fix
+	uv run ruff format $(PACKAGE) tests/
 
 test:
 	uv run pytest --cov=$(PACKAGE) --cov-report=term-missing --cov-report=xml
 
 typecheck:
-	uv run mypy $(PACKAGE) tests/ examples/
+	uv run mypy $(PACKAGE) tests/
 
 # Only used for doc-testing, not for remote doc deployment
 DOCS_BRANCH ?= tmp-gh-pages

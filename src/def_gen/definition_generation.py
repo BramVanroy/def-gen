@@ -11,7 +11,7 @@ from random import Random
 from typing import Any, Literal
 
 import numpy as np
-from datasets import concatenate_datasets, load_dataset
+from datasets import Value, concatenate_datasets, load_dataset
 from llm_annotator import Annotator
 from llm_annotator.clients import Client, ProviderRuntimeOptions
 from pydantic import (
@@ -64,7 +64,9 @@ class PipelineStepConfig(BaseModel):
     name: str
     task: Literal["definer", "feedback", "revisor", "judge", "ranker"]
     model_name: str
-    provider: Literal["openai", "anthropic", "vllm", "vllm-offline"] | None = None
+    provider: Literal["openai", "anthropic", "vllm", "vllm-offline"] | None = (
+        None
+    )
     file_directory: Path | None = None
     full_prompt_template: str | None = None
     prompt_template_prefix: str = ""
@@ -175,13 +177,15 @@ def set_seed(seed: int = 42) -> None:
         import torch
     except ImportError:
         pass
-    else:        
+    else:
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
 
 
-def _create_client_and_runtime_options(step: Step) -> tuple[Client, ProviderRuntimeOptions]:
+def _create_client_and_runtime_options(
+    step: Step,
+) -> tuple[Client, ProviderRuntimeOptions]:
     """Create the configured llm-annotator client for a step."""
     provider = step.provider
 
@@ -189,21 +193,34 @@ def _create_client_and_runtime_options(step: Step) -> tuple[Client, ProviderRunt
         if provider == "openai":
             from llm_annotator import OpenAIClient, OpenAIRuntimeOptions
 
-            return OpenAIClient(model=step.model_name, **step.client_init_kwargs), OpenAIRuntimeOptions(**step.client_run_kwargs)
+            return OpenAIClient(
+                model=step.model_name, **step.client_init_kwargs
+            ), OpenAIRuntimeOptions(**step.client_run_kwargs)
         elif provider == "anthropic":
             from llm_annotator import ClaudeClient, ClaudeRuntimeOptions
 
-            return ClaudeClient(model=step.model_name, **step.client_init_kwargs), ClaudeRuntimeOptions(**step.client_run_kwargs)
+            return ClaudeClient(
+                model=step.model_name, **step.client_init_kwargs
+            ), ClaudeRuntimeOptions(**step.client_run_kwargs)
         elif provider == "vllm":
             from llm_annotator import VLLMClient, VLLMServerRuntimeOptions
 
-            return VLLMClient(model=step.model_name, **step.client_init_kwargs), VLLMServerRuntimeOptions(**step.client_run_kwargs)
+            return VLLMClient(
+                model=step.model_name, **step.client_init_kwargs
+            ), VLLMServerRuntimeOptions(**step.client_run_kwargs)
         elif provider == "vllm-offline":
-            from llm_annotator import VLLMOfflineClient, VLLMOfflineRuntimeOptions
+            from llm_annotator import (
+                VLLMOfflineClient,
+                VLLMOfflineRuntimeOptions,
+            )
 
-            return VLLMOfflineClient(model=step.model_name, **step.client_init_kwargs), VLLMOfflineRuntimeOptions(**step.client_run_kwargs)
+            return VLLMOfflineClient(
+                model=step.model_name, **step.client_init_kwargs
+            ), VLLMOfflineRuntimeOptions(**step.client_run_kwargs)
         else:
-            raise ValueError(f"Unsupported provider {provider!r} for client creation.")
+            raise ValueError(
+                f"Unsupported provider {provider!r} for client creation."
+            )
     except ImportError as import_exc:
         if provider == "openai":
             raise ImportError(
@@ -228,15 +245,23 @@ def concat_feedback(
     """Combine reviewer feedback columns into a single field."""
     feedback = ""
     for reviewer_idx, (_, cols) in enumerate(feedback_cols.items(), 1):
-        revisie_name = next((c for c in cols if c.startswith("revisie-nodig")), None)
+        revisie_name = next(
+            (c for c in cols if c.startswith("revisie-nodig")), None
+        )
         if revisie_name is not None and not sample[revisie_name]:
             continue
 
         reviewer_feedback = f"*Feedback van reviewer {reviewer_idx}*\n"
         reviewer_points = []
         for col in cols:
-            if col in sample and "revisie-nodig" not in col and sample[col] is not None:
-                colname = next((f for f in FEEDBACK_FIELDS if col.startswith(f)), col).lower()
+            if (
+                col in sample
+                and "revisie-nodig" not in col
+                and sample[col] is not None
+            ):
+                colname = next(
+                    (f for f in FEEDBACK_FIELDS if col.startswith(f)), col
+                ).lower()
                 if bool(re.search(r"([^.])\1{2,}", sample[col])):
                     print(
                         "  - Skipping feedback for column"
@@ -249,7 +274,9 @@ def concat_feedback(
             feedback += reviewer_feedback + "\n".join(reviewer_points) + "\n\n"
 
     if feedback == "":
-        print(f"Warning: No feedback generated for lemmavorm {sample['lemmavorm']!r}")
+        print(
+            f"Warning: No feedback generated for lemmavorm {sample['lemmavorm']!r}"
+        )
 
     return {"feedback": feedback.strip()}
 
@@ -269,7 +296,9 @@ def prepare_examples(
         vb = " ".join(vb.strip().split())
         vb_words = vb.split()
         vb_lc_words = vb.lower().split()
-        word_idx = next((i for i, w in enumerate(vb_lc_words) if lc_word in w), -1)
+        word_idx = next(
+            (i for i, w in enumerate(vb_lc_words) if lc_word in w), -1
+        )
         start_idx = max(0, word_idx - context_words)
         end_idx = min(len(vb_words), word_idx + context_words + 1)
 
@@ -336,18 +365,21 @@ def init_data(
             },
             input_columns=["voorbeelden", "lemmavorm"],
             num_proc=num_proc,
-        ).filter(
+        )
+        .filter(
             lambda x: (
                 x["woordsoort"] == "substantief"
                 and len(x["definitie"].split()) > 5
                 and x["lemmavorm"][0].isalpha()
                 and x["lemmavorm"][0].islower()
                 and not x["artikel_meerdere_betekenissen"]
-                and "ook:" not in x["definitie"].lower()  # Also counts as polysemic
+                and "ook:"
+                not in x["definitie"].lower()  # Also counts as polysemic
                 and len(x["voorbeelden"]) >= min_num_examples
             ),
             num_proc=num_proc,
-        ).remove_columns(
+        )
+        .remove_columns(
             [
                 "mini_definitie",
                 "woordsoort",
@@ -364,6 +396,7 @@ def init_data(
             fn_kwargs={"num_examples": min_num_examples},
         )
         .shuffle(seed=42)
+        .cast_column("artikel_laatst_bewerkt", Value("string"))
     )
 
     if num_samples is not None and num_samples > 0 and num_samples < len(ds):
@@ -372,7 +405,9 @@ def init_data(
     return ds
 
 
-def check_rank_validity(sample: dict[str, Any], plaatsen_cols: list[str]) -> bool:
+def check_rank_validity(
+    sample: dict[str, Any], plaatsen_cols: list[str]
+) -> bool:
     """Return whether all three ranking choices appear exactly once."""
     if len(plaatsen_cols) != 3:
         raise ValueError(
@@ -395,9 +430,13 @@ def check_rank_validity(sample: dict[str, Any], plaatsen_cols: list[str]) -> boo
 def build_pipeline(config: GenerateDefinitionsConfig) -> Pipeline:
     """Build a pipeline for the selected workflow configuration."""
     if config.steps:
-        return Pipeline([step_config.to_step() for step_config in config.steps])
+        return Pipeline(
+            [step_config.to_step() for step_config in config.steps]
+        )
     else:
-        raise NotImplementedError("Currently only explicit steps configuration is supported.")
+        raise NotImplementedError(
+            "Currently only explicit steps configuration is supported."
+        )
 
 
 def run_generation(config: GenerateDefinitionsConfig) -> None:
@@ -415,7 +454,9 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
     pipe = build_pipeline(config)
 
     config.root_output_dir.mkdir(parents=True, exist_ok=True)
-    with config.root_output_dir.joinpath("pipeline.json").open("w", encoding="utf-8") as fh:
+    with config.root_output_dir.joinpath("pipeline.json").open(
+        "w", encoding="utf-8"
+    ) as fh:
         data = {**pipe.to_dict(), **config.to_dict()}
         json.dump(data, fh, indent=4, cls=PathCompatibleEncoder)
 
@@ -423,12 +464,16 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
     prev_client_key = None
     anno = None
 
-    failed_samples_path = config.root_output_dir.joinpath("failed_samples.jsonl")
+    failed_samples_path = config.root_output_dir.joinpath(
+        "failed_samples.jsonl"
+    )
     failed_samples_fh = failed_samples_path.open("a", encoding="utf-8")
 
     no_revision_ds = None
     for step in pipe:
-        print(f"Step {step.idx + 1}: {step.name} ({step.task}) using model {step.model_name}")
+        print(
+            f"Step {step.idx + 1}: {step.name} ({step.task}) using model {step.model_name}"
+        )
 
         if step.task == "feedback":
             feedback_cols[step.name] = list(step.post_field_renamer.values())
@@ -481,7 +526,7 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
 
         client_key = (
             step.model_name,
-            json.dumps(step.client_init_kwargs, sort_keys=True),
+            json.dumps(step.client_init_kwargs, sort_keys=True, default=str),
         )
         if client_key != prev_client_key:
             if anno is not None:
@@ -498,7 +543,9 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
         if step.task == "ranker" and config.add_revision_stage:
             plaatsen = ["eerste-plaats", "tweede-plaats", "derde-plaats"]
             plaatsen_cols = [step.post_field_renamer[pos] for pos in plaatsen]
-            validate_fn = partial(check_rank_validity, plaatsen_cols=plaatsen_cols)
+            validate_fn = partial(
+                check_rank_validity, plaatsen_cols=plaatsen_cols
+            )
         else:
             validate_fn = None
 
@@ -547,7 +594,9 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
                 " samples are below (valid='stop')."
             )
             counts = Counter(invalid_ds[f"{task_prefix}finish_reason"])
-            counts = dict(sorted(counts.items(), key=lambda item: item[1], reverse=True))
+            counts = dict(
+                sorted(counts.items(), key=lambda item: item[1], reverse=True)
+            )
             for reason, count in counts.items():
                 print(f"- {reason}: {count:,}")
             for sample in invalid_ds.to_list():
@@ -555,7 +604,9 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
                     f"{step.idx + 1}-{step.name}: Did not produce"
                     " valid_fields=True"
                 )
-                failed_samples_fh.write(f"{json.dumps(sample)}\\n")
+                failed_samples_fh.write(
+                    f"{json.dumps(sample, default=str)}\\n"
+                )
 
         ds = filtered_ds.rename_columns(step.post_field_renamer)
 
@@ -586,16 +637,22 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
         if no_revision_ds is not None:
             new_cols = set(ds.column_names) - set(no_revision_ds.column_names)
             for col in new_cols:
-                no_revision_ds = no_revision_ds.add_column(col, [None] * len(no_revision_ds))
+                no_revision_ds = no_revision_ds.add_column(
+                    col, [None] * len(no_revision_ds)
+                )
 
-        print(f"Done step {step.idx + 1}: {step.name}, saving to {step_done_dir}")
+        print(
+            f"Done step {step.idx + 1}: {step.name}, saving to {step_done_dir}"
+        )
         ds.save_to_disk(step_done_dir)
 
     failed_samples_fh.close()
     if anno is not None:
         anno.destroy()
     if no_revision_ds is not None:
-        print(f"Merging back {len(no_revision_ds)} samples that did not require revision.")
+        print(
+            f"Merging back {len(no_revision_ds)} samples that did not require revision."
+        )
         ds = concatenate_datasets([ds, no_revision_ds])
 
     ds.save_to_disk(config.root_output_dir.joinpath("full_process_done"))

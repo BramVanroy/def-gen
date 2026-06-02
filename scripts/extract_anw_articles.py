@@ -76,7 +76,7 @@ def extract_articles_from_xml(fin: str, fout: str | None = None, element_name: s
         context = etree.iterparse(fin, events=("end",), tag=element_name)
         for _, elem in tqdm(context):
             artikel = get_lemma_definitions(elem)
-            fhout.write(json.dumps(artikel) + "\n")
+            fhout.write(json.dumps(artikel, default=str) + "\n")
             # Clear the element to free up memory
             elem.clear()
             while elem.getprevious() is not None:

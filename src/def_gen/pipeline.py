@@ -33,31 +33,50 @@ class Step:
 
     def __post_init__(self):
         if self.full_prompt_template and self.file_directory:
-            raise ValueError("Only one of prompt or prompt_file should be provided.")
+            raise ValueError(
+                "Only one of prompt or prompt_file should be provided."
+            )
         if self.prompt_template_prefix and self.file_directory:
-            raise ValueError("Only one of prefix or prompt_file should be provided.")
+            raise ValueError(
+                "Only one of prefix or prompt_file should be provided."
+            )
         if self.schema and self.file_directory:
-            raise ValueError("Only one of schema or schema_file should be provided.")
+            raise ValueError(
+                "Only one of schema or schema_file should be provided."
+            )
         if not self.full_prompt_template and not self.file_directory:
-            raise ValueError("One of prompt or prompt_file should be provided.")
+            raise ValueError(
+                "One of prompt or prompt_file should be provided."
+            )
 
-        self.file_directory = Path(self.file_directory) if self.file_directory else None
+        self.file_directory = (
+            Path(self.file_directory) if self.file_directory else None
+        )
         if self.file_directory:
             if not self.file_directory.exists():
-                raise ValueError(f"Provided file_directory {self.file_directory} does not exist!")
+                raise ValueError(
+                    f"Provided file_directory {self.file_directory} does not exist!"
+                )
 
             shared_file = self.file_directory / "shared.md"
             if shared_file.exists():
-                self.prompt_template_prefix = shared_file.read_text(encoding="utf-8")
+                self.prompt_template_prefix = shared_file.read_text(
+                    encoding="utf-8"
+                )
 
             prompt_file = self.file_directory / "specific.md"
             if not prompt_file.exists():
                 raise ValueError(f"Prompt file {prompt_file} does not exist!")
-            self.full_prompt_template = self.prompt_template_prefix + prompt_file.read_text(encoding="utf-8")
+            self.full_prompt_template = (
+                self.prompt_template_prefix
+                + prompt_file.read_text(encoding="utf-8")
+            )
 
             schema_file = self.file_directory / "schema.json"
             if schema_file.exists():
-                self.schema = json.loads(Path(schema_file).read_text(encoding="utf-8"))
+                self.schema = json.loads(
+                    Path(schema_file).read_text(encoding="utf-8")
+                )
 
     def __repr__(self):
         return f"Step(idx={self.idx}, name={self.name}, task={self.task}, model_name={self.model_name})"
@@ -103,28 +122,42 @@ class Pipeline:
             step_idx = step.idx
             if step.task == "definer":
                 if saw_definer:
-                    raise ValueError("Pipeline can only contain one definer step!")
+                    raise ValueError(
+                        "Pipeline can only contain one definer step!"
+                    )
                 saw_definer = True
                 if step_idx != 0:
                     raise ValueError("Definer step must be the first step!")
             elif step.task == "feedback":
                 if not saw_definer:
-                    raise ValueError("Feedback step must be preceded by definer somewhere!")
+                    raise ValueError(
+                        "Feedback step must be preceded by definer somewhere!"
+                    )
                 saw_feedback = True
             elif step.task == "revisor":
                 if not saw_feedback:
-                    raise ValueError("Revisor step must be preceded by feedback somewhere!")
+                    raise ValueError(
+                        "Revisor step must be preceded by feedback somewhere!"
+                    )
                 if not saw_definer:
-                    raise ValueError("Revisor step must be preceded by definer somewhere!")
+                    raise ValueError(
+                        "Revisor step must be preceded by definer somewhere!"
+                    )
             elif step.task == "judge":
                 if not saw_definer:
-                    raise ValueError("Judge step must be preceded by definer somewhere!")
+                    raise ValueError(
+                        "Judge step must be preceded by definer somewhere!"
+                    )
             elif step.task == "ranker":
                 if not saw_definer:
-                    raise ValueError("Ranker step must be preceded by definer somewhere!")
+                    raise ValueError(
+                        "Ranker step must be preceded by definer somewhere!"
+                    )
 
         if not saw_definer:
-            raise ValueError("Pipeline must contain a definer step at the start!")
+            raise ValueError(
+                "Pipeline must contain a definer step at the start!"
+            )
 
         done_tasks = set(Task)
         for step in reversed(self.steps):

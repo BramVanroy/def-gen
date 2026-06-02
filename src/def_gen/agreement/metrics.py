@@ -2,7 +2,11 @@ from typing import Iterable
 
 import krippendorff
 import pandas as pd
-from statsmodels.stats.inter_rater import aggregate_raters, cohens_kappa, fleiss_kappa
+from statsmodels.stats.inter_rater import (
+    aggregate_raters,
+    cohens_kappa,
+    fleiss_kappa,
+)
 
 
 def calculate_cohen_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
@@ -31,7 +35,9 @@ def calculate_cohen_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
 
     categories = df[columns].stack().dropna().unique().tolist()
     confusion = pd.crosstab(df[columns[0]], df[columns[1]], dropna=True)
-    confusion = confusion.reindex(index=categories, columns=categories, fill_value=0)
+    confusion = confusion.reindex(
+        index=categories, columns=categories, fill_value=0
+    )
     cohen = cohens_kappa(confusion)
     return float(cohen.kappa)
 
@@ -63,7 +69,9 @@ def calculate_fleiss_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
     return fleiss
 
 
-def calculate_krippendorff_alpha(df: pd.DataFrame, columns: Iterable[str]) -> float:
+def calculate_krippendorff_alpha(
+    df: pd.DataFrame, columns: Iterable[str]
+) -> float:
     """Calculate Krippendorff's alpha for nominal data with flexible rater counts.
 
     Krippendorff's alpha handles any number of raters, tolerates missing data,
@@ -84,11 +92,15 @@ def calculate_krippendorff_alpha(df: pd.DataFrame, columns: Iterable[str]) -> fl
     categories = df[columns].stack().dropna().unique().tolist()
     cat2id = {c: i for i, c in enumerate(categories)}
     ratings_matrix = df[columns].map(lambda v: cat2id[v]).to_numpy()
-    alpha = krippendorff.alpha(reliability_data=ratings_matrix.T, level_of_measurement="nominal")
+    alpha = krippendorff.alpha(
+        reliability_data=ratings_matrix.T, level_of_measurement="nominal"
+    )
     return alpha
 
 
-def calculate_preference_rates(df: pd.DataFrame, columns: Iterable[str]) -> dict:
+def calculate_preference_rates(
+    df: pd.DataFrame, columns: Iterable[str]
+) -> dict:
     """Calculate preference rates for each category across multiple raters.
 
     This function computes how often each category was selected by all raters,

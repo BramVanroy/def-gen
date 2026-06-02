@@ -8,7 +8,9 @@ import pytest
 
 _SPEC = importlib.util.spec_from_file_location(
     "generate_definitions_script",
-    Path(__file__).resolve().parents[1] / "scripts" / "generate_definitions.py",
+    Path(__file__).resolve().parents[1]
+    / "scripts"
+    / "generate_definitions.py",
 )
 assert _SPEC and _SPEC.loader is not None
 cli = importlib.util.module_from_spec(_SPEC)
