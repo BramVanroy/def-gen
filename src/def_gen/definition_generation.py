@@ -8,7 +8,7 @@ from collections import Counter
 from functools import partial
 from pathlib import Path
 from random import Random
-from typing import Any, Literal, Type, Type
+from typing import Any, Literal
 
 import numpy as np
 from datasets import concatenate_datasets, load_dataset
@@ -114,6 +114,8 @@ class GenerateDefinitionsConfig(BaseModel):
     """Configuration for the definitions generation workflow.
 
     Args:
+        from_hub_id: Optional hub dataset id to initialize from instead of
+            the source data file.
         num_samples: Number of sampled examples. Use None for all rows.
         min_num_examples: Minimum number of examples per entry.
         overwrite: Whether to delete existing step outputs before running.
@@ -128,6 +130,7 @@ class GenerateDefinitionsConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
+    from_hub_id: str | None = None
     num_samples: int | None = 512
     min_num_examples: int = Field(default=3, ge=1)
     overwrite: bool = False
@@ -400,11 +403,15 @@ def build_pipeline(config: GenerateDefinitionsConfig) -> Pipeline:
 def run_generation(config: GenerateDefinitionsConfig) -> None:
     """Run the full generation workflow for the provided config."""
     set_seed(config.seed)
-    ds = init_data(
-        num_samples=config.num_samples,
-        min_num_examples=config.min_num_examples,
-        num_proc=config.num_proc,
-    )
+
+    if config.from_hub_id:
+        ds = load_dataset(config.from_hub_id)["train"]
+    else:
+        ds = init_data(
+            num_samples=config.num_samples,
+            min_num_examples=config.min_num_examples,
+            num_proc=config.num_proc,
+        )
     pipe = build_pipeline(config)
 
     config.root_output_dir.mkdir(parents=True, exist_ok=True)
