@@ -5,6 +5,7 @@
   "batch_size": 64,
   "num_proc": 4,
   "root_output_dir": "outputs/5examples-qwen",
+  "from_hub_id": "BramVanroy/anw-15-4-2026-monosemous-nouns-5examples",
   "hub_id": "BramVanroy/anw-15-4-2026-monosemous-nouns-5examples-qwen",
   "seed": 42,
   "steps": [
