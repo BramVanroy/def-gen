@@ -8,7 +8,6 @@ from typing import Counter
 
 import numpy as np
 
-# enable_quiet_mode()
 import torch
 from datasets import concatenate_datasets, load_dataset
 from llm_annotator import Annotator
