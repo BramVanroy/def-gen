@@ -105,7 +105,7 @@ def explode_in_definitions(samples: dict[list]) -> dict:
         betekenissen = sample["betekenissen"]
         for bet in betekenissen:
             voorbeelden = [vb for vb in bet["voorbeelden"] if vb is not None]
-            if bet["definitie"] is not None and len(voorbeelden) > 0:
+            if bet["definitie"] is not None:
                 defs["artikel_pid"].append(sample["pid"])
                 defs["artikel_id"].append(sample["id"])
                 defs["artikel_meerdere_betekenissen"].append(sample["meerdere_betekenissen"])
@@ -121,6 +121,10 @@ def explode_in_definitions(samples: dict[list]) -> dict:
 
 
 def main(fin: str, num_workers: int | None = None):
+    """
+    Main function to extract lemma articles and their definitions from an XML file.
+    Only extracts definitions that have a non-empty definition, to ensure quality of the extracted data.
+    """
     # First extract articles as separate items in the JSONL file
     pfout = Path(fin).parent.joinpath("anw_lemma_articles.jsonl")
 
