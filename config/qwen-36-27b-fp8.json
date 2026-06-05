@@ -26,11 +26,10 @@
         "top_k": 20,
         "presence_penalty": 0.0,
         "repetition_penalty": 1.0,
-        "max_tokens": 384,
-        "chat_template_kwargs": {"enable_thinking": true}
+        "max_tokens": 384
       },
       "post_field_renamer": {
-        "definitie": "definitie-qwen"
+        "definitie": "definitie-v1"
       }
     },
     {
@@ -50,17 +49,7 @@
         "top_k": 20,
         "presence_penalty": 0.0,
         "repetition_penalty": 1.0,
-        "max_tokens": 1024,
-        "chat_template_kwargs": {"enable_thinking": true}
-      },
-      "post_field_renamer": {
-        "begrijpelijkheid": "begrijpelijkheid_qwen",
-        "betekenis": "betekenis_qwen",
-        "gebruik": "gebruik_qwen",
-        "structuur": "structuur_qwen",
-        "substitueerbaarheid": "substitueerbaarheid_qwen",
-        "correctheid": "correctheid_qwen",
-        "revisie-nodig": "revisie-nodig_qwen"
+        "max_tokens": 1024
       }
     }
   ]
