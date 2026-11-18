@@ -1,0 +1,183 @@
+{
+  "from_hub_id": "outputs/study/head-to-head-input",
+  "from_hub_split": "eval",
+  "num_samples": null,
+  "hub_id": null,
+  "root_output_dir": "outputs/study/head-to-head",
+  "steps": [
+    {
+      "name": "ranker-h2h-qwen38-r0",
+      "task": "ranker",
+      "model_name": "Qwen/Qwen3.8-27B-FP8",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/ranker",
+      "order_rotation": 0,
+      "candidate_columns": [
+        "definitie-gemma4-26b-a4b",
+        "definitie-qwen36-35b-a3b"
+      ],
+      "post_field_renamer": {
+        "argumentatie": "argumentatie_h2h_qwen38_r0",
+        "ranking": "ranking_h2h_qwen38_r0"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "repetition_penalty": 1.0,
+        "max_completion_tokens": 1024,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "ranker-h2h-qwen38-r1",
+      "task": "ranker",
+      "model_name": "Qwen/Qwen3.8-27B-FP8",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/ranker",
+      "order_rotation": 1,
+      "candidate_columns": [
+        "definitie-gemma4-26b-a4b",
+        "definitie-qwen36-35b-a3b"
+      ],
+      "post_field_renamer": {
+        "argumentatie": "argumentatie_h2h_qwen38_r1",
+        "ranking": "ranking_h2h_qwen38_r1"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "repetition_penalty": 1.0,
+        "max_completion_tokens": 1024,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "ranker-h2h-gemma4-r0",
+      "task": "ranker",
+      "model_name": "google/gemma-4-31B-it-qat-w4a16-ct",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/ranker",
+      "order_rotation": 0,
+      "candidate_columns": [
+        "definitie-gemma4-26b-a4b",
+        "definitie-qwen36-35b-a3b"
+      ],
+      "post_field_renamer": {
+        "argumentatie": "argumentatie_h2h_gemma4_r0",
+        "ranking": "ranking_h2h_gemma4_r0"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "max_completion_tokens": 1024,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "ranker-h2h-gemma4-r1",
+      "task": "ranker",
+      "model_name": "google/gemma-4-31B-it-qat-w4a16-ct",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/ranker",
+      "order_rotation": 1,
+      "candidate_columns": [
+        "definitie-gemma4-26b-a4b",
+        "definitie-qwen36-35b-a3b"
+      ],
+      "post_field_renamer": {
+        "argumentatie": "argumentatie_h2h_gemma4_r1",
+        "ranking": "ranking_h2h_gemma4_r1"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "max_completion_tokens": 1024,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "ranker-h2h-gptoss-r0",
+      "task": "ranker",
+      "model_name": "openai/gpt-oss-20b",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/ranker",
+      "order_rotation": 0,
+      "candidate_columns": [
+        "definitie-gemma4-26b-a4b",
+        "definitie-qwen36-35b-a3b"
+      ],
+      "post_field_renamer": {
+        "argumentatie": "argumentatie_h2h_gptoss_r0",
+        "ranking": "ranking_h2h_gptoss_r0"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "max_completion_tokens": 1024,
+        "chat_template_kwargs": {
+          "reasoning_effort": "low"
+        }
+      }
+    },
+    {
+      "name": "ranker-h2h-gptoss-r1",
+      "task": "ranker",
+      "model_name": "openai/gpt-oss-20b",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/ranker",
+      "order_rotation": 1,
+      "candidate_columns": [
+        "definitie-gemma4-26b-a4b",
+        "definitie-qwen36-35b-a3b"
+      ],
+      "post_field_renamer": {
+        "argumentatie": "argumentatie_h2h_gptoss_r1",
+        "ranking": "ranking_h2h_gptoss_r1"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "max_completion_tokens": 1024,
+        "chat_template_kwargs": {
+          "reasoning_effort": "low"
+        }
+      }
+    }
+  ]
+}

@@ -1255,17 +1255,25 @@ STUDY_CONFIGS = sorted(
 )
 
 
+def _load_study_config(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 @pytest.mark.parametrize("path", STUDY_CONFIGS, ids=lambda p: p.name)
 def test_study_configs_build_pipelines(path: Path) -> None:
-    config = dg.GenerateDefinitionsConfig.model_validate(
-        json.loads(path.read_text(encoding="utf-8"))
-    )
+    data = _load_study_config(path)
+    data["allow_paid_api"] = True
+    config = dg.GenerateDefinitionsConfig.model_validate(data)
 
     pipe = dg.build_pipeline(config)
 
     assert len(pipe) > 0
     for step in pipe:
-        assert step.provider == "vllm-offline"
+        assert step.provider in ("vllm-offline", "openai")
+        if step.provider == "openai":
+            assert step.task == "definer"
+            llm_annotator.OpenAIRuntimeOptions(**step.client_run_kwargs)
+            continue
         assert step.post_field_renamer
         if step.schema:
             assert set(step.post_field_renamer) == set(
@@ -1277,9 +1285,49 @@ def test_study_configs_build_pipelines(path: Path) -> None:
         assert options.chat_template_kwargs
 
 
+def test_committed_study_configs_forbid_paid_api() -> None:
+    for path in STUDY_CONFIGS:
+        data = _load_study_config(path)
+        assert data.get("allow_paid_api", False) is False
+        config = dg.GenerateDefinitionsConfig.model_validate(data)
+        providers = {s.provider for s in config.steps}
+        if "openai" in providers:
+            with pytest.raises(ValueError, match="paid API"):
+                dg.build_pipeline(config)
+        else:
+            dg.build_pipeline(config)
+
+
+def test_head_to_head_config_matches_writer_configs() -> None:
+    study = STUDY_CONFIGS[0].parent
+    h2h = _load_study_config(study / "head-to-head.json")
+    writers = [
+        _load_study_config(study / name)["steps"][0]["name"]
+        for name in (
+            "writer-gemma4-26b-a4b.json",
+            "writer-qwen36-35b-a3b.json",
+        )
+    ]
+    expected = sorted(w.removeprefix("definer-") for w in writers)
+
+    assert h2h["from_hub_split"] == "eval"
+    assert h2h["hub_id"] is None
+    for step in h2h["steps"]:
+        assert step["task"] == "ranker"
+        assert (
+            sorted(
+                c.removeprefix("definitie-") for c in step["candidate_columns"]
+            )
+            == expected
+        )
+    assert [s["order_rotation"] for s in h2h["steps"]] == [0, 1] * 3
+
+
 def test_study_configs_exist() -> None:
     assert {p.name for p in STUDY_CONFIGS} == {
         "anw-judges.json",
+        "head-to-head.json",
         "writer-gemma4-26b-a4b.json",
+        "writer-openai.json",
         "writer-qwen36-35b-a3b.json",
     }
