@@ -1,37 +1,32 @@
+# Run `uv run pre-commit autoupdate` periodically to bump pre-commit-hooks.
+# The ruff hooks are local and run through uv, so they always match the
+# versions pinned in uv.lock (upgrade with `uv lock --upgrade`).
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-case-conflict
       - id: check-merge-conflict
       - id: check-toml
       - id: check-yaml
-        # Needed to allow the mkdocs.yml config file to be linted by pre-commit
-        args: [--unsafe]
-      # Exlclude the prompts
+      # The prompt files are sent to the model verbatim, so whitespace matters.
       - id: end-of-file-fixer
-        exclude: ^instructions/**/.*\.md$
+        exclude: ^instructions/
       - id: trailing-whitespace
-        exclude: ^instructions/**/.*\.md$
+        exclude: ^instructions/
 
   - repo: local
     hooks:
-      - id: ruff-lint
-        name: ruff lint
+      - id: ruff-check
+        name: ruff check
         entry: uv run ruff check --fix --exit-non-zero-on-fix
         language: system
-        types: [python]
+        types_or: [python, pyi]
         pass_filenames: false
       - id: ruff-format
         name: ruff format
         entry: uv run ruff format
         language: system
-        types: [python]
-        pass_filenames: false
-      - id: mypy
-        name: mypy
-        entry: uv run mypy
-        language: system
-        types: [python]
+        types_or: [python, pyi]
         pass_filenames: false

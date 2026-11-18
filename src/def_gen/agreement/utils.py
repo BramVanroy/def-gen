@@ -1,4 +1,6 @@
-from typing import Iterable
+"""Helpers for agreement analysis."""
+
+from collections.abc import Iterable
 
 import pandas as pd
 
@@ -13,6 +15,10 @@ def confusion_matrix(
 
     Args:
         df (pd.DataFrame): Dataframe containing rater columns.
+        columns: The two rater columns to compare.
+        rownames: Optional names for the row index.
+        colnames: Optional names for the column index.
+
     Returns:
         pd.DataFrame: Confusion matrix as a DataFrame.
     """

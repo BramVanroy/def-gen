@@ -1,4 +1,6 @@
-from typing import Iterable
+"""Agreement metrics between raters."""
+
+from collections.abc import Iterable
 
 import krippendorff
 import pandas as pd
@@ -60,7 +62,6 @@ def calculate_fleiss_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
           * 0 indicates chance-level agreement, and
           * 1 indicates perfect agreement.
     """
-
     categories = df[columns].stack().dropna().unique().tolist()
     cat2id = {c: i for i, c in enumerate(categories)}
     ratings_matrix = df[columns].map(lambda v: cat2id[v]).to_numpy()

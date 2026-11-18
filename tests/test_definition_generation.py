@@ -1,28 +1,14 @@
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 
+import llm_annotator
+import numpy as np
 import pytest
+import torch
 from pydantic import ValidationError
 
 from def_gen import definition_generation as dg
-
-
-class _FakeTorch:
-    class cuda:
-        @staticmethod
-        def is_available() -> bool:
-            return True
-
-        @staticmethod
-        def manual_seed_all(seed: int) -> None:
-            _FakeTorch.cuda_seed = seed
-
-    manual_seed_value = None
-    cuda_seed = None
-
-    @staticmethod
-    def manual_seed(seed: int) -> None:
-        _FakeTorch.manual_seed_value = seed
 
 
 def _make_step(**kwargs):
@@ -49,24 +35,24 @@ def test_config_coerces_path_and_defaults() -> None:
     config = dg.GenerateDefinitionsConfig(root_output_dir="outputs/custom")
 
     assert config.root_output_dir == Path("outputs/custom")
-    assert config.workflow == dg.WORKFLOW_NO_REVISION
-    assert config.add_revision_stage is False
     assert config.batch_size == 256
 
 
 def test_config_rejects_removed_or_unknown_values() -> None:
     with pytest.raises(ValidationError):
         dg.GenerateDefinitionsConfig(gpu_memory_utilization=1.5)
+    with pytest.raises(ValidationError):
+        dg.GenerateDefinitionsConfig(workflow="no-revision")
 
 
 def test_from_sources_cli_overrides_config_file() -> None:
     config = dg.GenerateDefinitionsConfig.from_sources(
-        config_data={"num_samples": 10, "workflow": "no-revision"},
-        overrides={"num_samples": 2, "workflow": "with-revision"},
+        config_data={"num_samples": 10, "batch_size": 4},
+        overrides={"num_samples": 2},
     )
 
     assert config.num_samples == 2
-    assert config.workflow == dg.WORKFLOW_WITH_REVISION
+    assert config.batch_size == 4
 
 
 def test_pipeline_step_config_requires_prompt_source() -> None:
@@ -87,7 +73,7 @@ def test_pipeline_step_config_client_kwargs_accepted() -> None:
             "full_prompt_template": "Prompt",
             "provider": "openai",
             "client_init_kwargs": {"api_key": "x"},
-            "client_run_kwargs": {"max_tokens": 12},
+            "client_run_kwargs": {"max_completion_tokens": 12},
             "schema": {"type": "object"},
         }
     )
@@ -97,90 +83,84 @@ def test_pipeline_step_config_client_kwargs_accepted() -> None:
     assert step.output_schema == {"type": "object"}
     assert out.provider == "openai"
     assert out.client_init_kwargs["api_key"] == "x"
-    assert out.client_run_kwargs["max_tokens"] == 12
+    assert out.client_run_kwargs["max_completion_tokens"] == 12
 
 
-def test_set_seed_calls_torch_and_numpy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls = {"np_seed": None}
-
-    monkeypatch.setattr(
-        dg.np.random,
-        "seed",
-        lambda seed: calls.__setitem__("np_seed", seed),
-    )
-    monkeypatch.setattr(dg, "_load_torch", lambda: _FakeTorch)
-
+def test_set_seed_is_reproducible() -> None:
     dg.set_seed(123)
+    first = (np.random.rand(), torch.rand(1).item())
+    dg.set_seed(123)
+    second = (np.random.rand(), torch.rand(1).item())
 
-    assert calls == {"np_seed": 123}
-    assert _FakeTorch.manual_seed_value == 123
-    assert _FakeTorch.cuda_seed == 123
+    assert first == second
 
 
-def test_set_seed_without_torch(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = {"np_seed": None}
-    monkeypatch.setattr(
-        dg.np.random,
-        "seed",
-        lambda seed: calls.__setitem__("np_seed", seed),
+@pytest.mark.parametrize(
+    ("provider", "client_cls", "options_cls", "run_kwargs"),
+    [
+        (
+            "openai",
+            "OpenAIClient",
+            "OpenAIRuntimeOptions",
+            {"max_completion_tokens": 333},
+        ),
+        (
+            "anthropic",
+            "ClaudeClient",
+            "ClaudeRuntimeOptions",
+            {"max_completion_tokens": 333},
+        ),
+        (
+            "vllm",
+            "VLLMOnlineClient",
+            "VLLMOnlineRuntimeOptions",
+            {"max_completion_tokens": 333},
+        ),
+        (
+            "vllm-offline",
+            "VLLMOfflineClient",
+            "VLLMOfflineRuntimeOptions",
+            {"max_completion_tokens": 333},
+        ),
+    ],
+)
+def test_create_client_and_runtime_options_per_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    client_cls: str,
+    options_cls: str,
+    run_kwargs: dict,
+) -> None:
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeOptions:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(llm_annotator, client_cls, FakeClient)
+    monkeypatch.setattr(llm_annotator, options_cls, FakeOptions)
+    step = _make_step(
+        model_name="some-model",
+        provider=provider,
+        client_init_kwargs={"api_key": "x"},
+        client_run_kwargs=run_kwargs,
     )
-    monkeypatch.setattr(dg, "_load_torch", lambda: None)
 
-    dg.set_seed(7)
+    client, options = dg._create_client_and_runtime_options(step)
 
-    assert calls == {"np_seed": 7}
-
-
-def test_resolve_provider_uses_explicit_value() -> None:
-    explicit = _make_step(
-        model_name="claude-sonnet-4",
-        provider="anthropic",
-    )
-
-    assert dg._resolve_provider(explicit) == "anthropic"
+    assert isinstance(client, FakeClient)
+    assert client.kwargs == {"model": "some-model", "api_key": "x"}
+    assert isinstance(options, FakeOptions)
+    assert options.kwargs == run_kwargs
 
 
-def test_resolve_provider_vllm_server_and_offline() -> None:
-    server = _make_step(
-        client_init_kwargs={"base_url": "http://localhost:8000/v1"}
-    )
-    offline = _make_step()
-
-    assert dg._resolve_provider(server) == "vllm"
-    assert dg._resolve_provider(offline) == "vllm-offline"
-
-
-def test_resolve_provider_rejects_invalid_value() -> None:
-    step = _make_step(provider="unknown")
+def test_create_client_rejects_unsupported_provider() -> None:
+    step = _make_step(provider=None)
 
     with pytest.raises(ValueError, match="provider"):
-        dg._resolve_provider(step)
-
-
-def test_create_client_uses_expected_client_class() -> None:
-    step = _make_step(
-        model_name="gpt-4o-mini",
-        provider="openai",
-    )
-
-    client = dg._create_client(step)
-
-    assert client.model == "gpt-4o-mini"
-
-
-def test_build_runtime_options_uses_client_run_kwargs() -> None:
-    step = _make_step(
-        model_name="gpt-4o-mini",
-        provider="openai",
-        client_run_kwargs={"max_tokens": 333, "temperature": 0.2},
-    )
-
-    options = dg._build_runtime_options(step)
-
-    assert options.kwargs["max_tokens"] == 333
-    assert options.kwargs["temperature"] == 0.2
+        dg._create_client_and_runtime_options(step)
 
 
 def test_concat_feedback_skips_repeated_characters() -> None:
@@ -254,7 +234,7 @@ def test_build_pipeline_uses_custom_steps() -> None:
                 file_directory=Path("instructions/definer"),
                 provider="openai",
                 client_init_kwargs={"api_key": "token"},
-                client_run_kwargs={"max_tokens": 42},
+                client_run_kwargs={"max_completion_tokens": 42},
                 post_field_renamer={"definitie": "definitie-v1"},
             )
         ]
@@ -264,7 +244,7 @@ def test_build_pipeline_uses_custom_steps() -> None:
 
     assert [step.name for step in pipe] == ["custom-definer"]
     assert pipe[0].provider == "openai"
-    assert pipe[0].client_run_kwargs["max_tokens"] == 42
+    assert pipe[0].client_run_kwargs["max_completion_tokens"] == 42
 
 
 class _RunDataset:
@@ -308,7 +288,7 @@ class _RunDataset:
 
     def add_column(self, col, values):
         rows = []
-        for row, value in zip(self.rows, values):
+        for row, value in zip(self.rows, values, strict=True):
             payload = dict(row)
             payload[col] = value
             rows.append(payload)
@@ -353,7 +333,7 @@ class _FakePipeline:
 
 
 class _FakeAnnotator:
-    init_calls = []
+    init_calls: ClassVar[list] = []
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -390,8 +370,11 @@ def test_run_generation_smoke(
         dg, "build_pipeline", lambda config: _FakePipeline([fake_step])
     )
     monkeypatch.setattr(dg, "Annotator", _FakeAnnotator)
-    monkeypatch.setattr(dg, "_create_client", lambda step: object())
-    monkeypatch.setattr(dg, "_build_runtime_options", lambda step: object())
+    monkeypatch.setattr(
+        dg,
+        "_create_client_and_runtime_options",
+        lambda step: (object(), object()),
+    )
 
     config = dg.GenerateDefinitionsConfig(
         root_output_dir=tmp_path,
@@ -420,8 +403,11 @@ def test_run_generation_pushes_formatted_hub_id(
         dg, "build_pipeline", lambda config: _FakePipeline([fake_step])
     )
     monkeypatch.setattr(dg, "Annotator", _FakeAnnotator)
-    monkeypatch.setattr(dg, "_create_client", lambda step: object())
-    monkeypatch.setattr(dg, "_build_runtime_options", lambda step: object())
+    monkeypatch.setattr(
+        dg,
+        "_create_client_and_runtime_options",
+        lambda step: (object(), object()),
+    )
 
     config = dg.GenerateDefinitionsConfig(
         root_output_dir=tmp_path,

@@ -1,30 +1,15 @@
-.PHONY: quality style test typecheck serve-docs
+.PHONY: quality style test
 
-PACKAGE = src/def_gen
-
+# Lint and format checks (no changes made).
 quality:
-	uv run interrogate -vv
-	uv run ruff check $(PACKAGE) tests/
-	uv run ruff format --check $(PACKAGE) tests/
+	uv run ruff check .
+	uv run ruff format --check .
 
+# Auto-fix lint violations and reformat.
 style:
-	uv run ruff check $(PACKAGE) tests/ --fix
-	uv run ruff format $(PACKAGE) tests/
+	uv run ruff check --fix .
+	uv run ruff format .
 
+# Run tests and doctests with coverage (also used by CI).
 test:
-	uv run pytest --cov=$(PACKAGE) --cov-report=term-missing --cov-report=xml
-
-typecheck:
-	uv run mypy $(PACKAGE) tests/
-
-# Only used for doc-testing, not for remote doc deployment
-DOCS_BRANCH ?= tmp-gh-pages
-DOCS_VERSION ?= 0.0.0
-DOCS_ALIAS ?= latest
-DOCS_ADDR ?= 127.0.0.1:8000
-DOCS_SOURCE_REF ?= main
-
-serve-docs:
-	DOCS_SOURCE_REF=$(DOCS_SOURCE_REF) uv run mike deploy --branch $(DOCS_BRANCH) --update-aliases $(DOCS_VERSION) $(DOCS_ALIAS)
-	uv run mike set-default --branch $(DOCS_BRANCH) $(DOCS_ALIAS)
-	uv run mike serve -b $(DOCS_BRANCH) -a $(DOCS_ADDR)
+	uv run pytest --cov --cov-report=term-missing --cov-report=xml

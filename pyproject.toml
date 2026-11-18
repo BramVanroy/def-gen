@@ -2,47 +2,44 @@
 name = "def-gen"
 dynamic = ["version"]
 description = "Generating and evaluating dictionary definitions with LLMs"
-readme = "README.md"
 authors = [
-    { name = "Bram Vanroy", email = "2779410+BramVanroy@users.noreply.github.com" }
+    {name = "Bram Vanroy", email = "2779410+BramVanroy@users.noreply.github.com"},
 ]
-license = "Apache-2.0"
-license-files = ["LICEN[CS]E*"]
+readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+]
 dependencies = [
-    "choix>=0.4.1",
-    "datasets>=4.4.1",
-    "krippendorff>=0.8.1",
-    "llm-annotator==0.10.7",
-    "lxml>=6.0.2,<7",
-    "numpy>=2.2.6",
-    "openpyxl>=3.1.5",
-    "pydantic>=2.11.9,<3",
-    "pingouin>=0.5.5,<0.6",
-    "statsmodels>=0.14.5",
-    "tqdm",
+    "datasets>=5.2,<6",
+    "krippendorff>=0.9,<0.10",
+    "llm-annotator>=0.19,<0.20",
+    "lxml>=6.1.3,<7",
+    "numpy>=2.3,<3",
+    "openpyxl>=3.1.5,<4",
+    "pydantic>=2.14,<3",
+    "statsmodels>=0.15,<0.16",
+    "tqdm>=4.70,<5",
 ]
 
 [project.optional-dependencies]
-vllm = [
-    "llm-annotator[vllm]==0.10.7"
-]
-anthropic = [
-    "llm-annotator[anthropic]==0.10.7"
-]
-openai = [
-    "llm-annotator[openai]==0.10.7"
-]
+vllm = ["llm-annotator[vllm]"]
+anthropic = ["llm-annotator[anthropic]"]
+openai = ["llm-annotator[openai]"]
 
 [project.urls]
 Homepage = "https://github.com/BramVanroy/def-gen"
-Documentation = "https://BramVanroy.github.io/def-gen"
 Repository = "https://github.com/BramVanroy/def-gen"
 Issues = "https://github.com/BramVanroy/def-gen/issues"
-Changelog = "https://github.com/BramVanroy/def-gen/releases"
+Changelog = "https://github.com/BramVanroy/def-gen/blob/main/CHANGELOG.md"
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling>=1.27", "hatch-vcs>=0.5"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -53,41 +50,50 @@ fallback-version = "0.0.0"
 packages = ["src/def_gen"]
 
 [dependency-groups]
-docs = [
-    "mkdocs-material>=9.7.6,<10",
-    "mike>=2.1.3,<3",
-    "mkdocstrings[python]>=1.0.4,<2",
-    "mkdocs-autorefs>=1.4.4,<2",
-    "mkdocs-gen-files>=0.6.1,<1",
-    "mkdocs-minify-plugin>=0.8.0,<1",
-]
 dev = [
-    {include-group = "docs"},
-    "interrogate>=1.7.0,<2",
-    "mypy>=1.20.1,<2",
-    "pre-commit>=4.6.0,<5",
-    "pytest>=9.0.3,<10",
-    "pytest-cov>=7.1.0",
-    "ruff>=0.15.10,<1",
+    "pre-commit>=4.7,<5",
+    "pytest>=9.1,<10",
+    "pytest-cov>=7.1,<8",
+    "ruff>=0.17.1,<0.18",
 ]
 
-[tool.pytest.ini_options]
+[tool.pytest]
+minversion = "9.0"
 testpaths = ["tests", "src"]
-addopts = [
-    "--doctest-modules",
-    "--import-mode=importlib",
-    "--cov=def_gen",
-    "--cov-report=term-missing",
-    "--cov-report=xml",
+addopts = ["--doctest-modules", "--import-mode=importlib"]
+strict = true
+
+[tool.coverage.run]
+source_pkgs = ["def_gen"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
 ]
 
 [tool.ruff]
-target-version = "py312"
 line-length = 79
 
 [tool.ruff.lint]
-ignore = ["C901", "E501", "E741", "F402", "F823", "E402"]
-select = ["C", "E", "F", "W", "I"]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "RUF", # Ruff-native rules
+    "D",   # pydocstyle
+]
+# E501: line length is handled by `ruff format`; long strings/URLs are fine.
+# D105, D107: magic methods and __init__ are documented on the class.
+ignore = ["E501", "D105", "D107"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -98,32 +104,7 @@ known-first-party = ["def_gen"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D"]
+"scripts/**" = ["D"]
 
 [tool.ruff.format]
 docstring-code-format = true
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
-
-[tool.interrogate]
-style = "google"
-exclude = ["tests", "scratches"]
-ignore-private = true
-ignore-semiprivate = true
-color = true
-
-[tool.mypy]
-python_version = "3.12"
-files = ["scripts", "src", "tests"]
-pretty = true
-show_error_codes = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_return_any = true
-no_implicit_optional = true
-check_untyped_defs = true
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false

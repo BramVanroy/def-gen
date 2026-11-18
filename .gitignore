@@ -2,6 +2,7 @@ copilot-instructions.md
 .vscode/
 .github/*
 !.github/workflows/
+!.github/dependabot.yml
 output/
 outputs/
 !config/*.example.json
@@ -10,6 +11,7 @@ models/
 prompts/
 data/
 scratches/
+planning/
 
 *.xlsx
 *.csv
@@ -160,8 +162,6 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
-/site
 
 # mypy
 .mypy_cache/

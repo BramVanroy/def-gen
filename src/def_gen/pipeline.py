@@ -1,3 +1,5 @@
+"""Pipeline steps and their order constraints."""
+
 import json
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
@@ -7,6 +9,8 @@ from typing import Literal
 
 
 class Task(StrEnum):
+    """Task types that a pipeline step can perform."""
+
     definer = "definer"
     feedback = "feedback"
     revisor = "revisor"
@@ -16,6 +20,13 @@ class Task(StrEnum):
 
 @dataclass(slots=True)
 class Step:
+    """One annotation step with its model, client settings and prompt.
+
+    The prompt comes either from `full_prompt_template` or from a
+    `file_directory` that holds `specific.md`, and optionally `shared.md`
+    (prepended to the prompt) and `schema.json` (the output schema).
+    """
+
     name: str
     task: Task
     model_name: str
@@ -83,6 +94,13 @@ class Step:
 
 
 class Pipeline:
+    """Ordered list of steps that is checked for a valid task order.
+
+    Args:
+        steps: The steps in execution order. Each step gets its index and
+            whether it is the last step of its task.
+    """
+
     def __init__(self, steps: list[Step]):
         self.steps = steps
         for idx, step in enumerate(self.steps):
@@ -143,16 +161,14 @@ class Pipeline:
                     raise ValueError(
                         "Revisor step must be preceded by definer somewhere!"
                     )
-            elif step.task == "judge":
-                if not saw_definer:
-                    raise ValueError(
-                        "Judge step must be preceded by definer somewhere!"
-                    )
-            elif step.task == "ranker":
-                if not saw_definer:
-                    raise ValueError(
-                        "Ranker step must be preceded by definer somewhere!"
-                    )
+            elif step.task == "judge" and not saw_definer:
+                raise ValueError(
+                    "Judge step must be preceded by definer somewhere!"
+                )
+            elif step.task == "ranker" and not saw_definer:
+                raise ValueError(
+                    "Ranker step must be preceded by definer somewhere!"
+                )
 
         if not saw_definer:
             raise ValueError(
@@ -170,4 +186,5 @@ class Pipeline:
                 break
 
     def to_dict(self) -> dict:
+        """Serialize all steps to a dict for JSON output."""
         return {"steps": [asdict(step) for step in self.steps]}

@@ -1,3 +1,5 @@
+"""Configuration and execution of the definition generation workflow."""
+
 from __future__ import annotations
 
 import hashlib
@@ -34,7 +36,9 @@ JUDGE_FIELDS = [
     "substitueerbaarheid",
     "correctheid",
 ]
-FEEDBACK_FIELDS = JUDGE_FIELDS + ["revisie-nodig"]
+FEEDBACK_FIELDS = [*JUDGE_FIELDS, "revisie-nodig"]
+
+DEFAULT_DATA_PATH = ROOT.joinpath("data/anw_lemma_definitions.jsonl")
 
 CLIENT_TYPE_CHOICES = ["openai", "anthropic", "vllm", "vllm-offline"]
 
@@ -85,7 +89,7 @@ class PipelineStepConfig(BaseModel):
         return Path(value)
 
     @model_validator(mode="after")
-    def _validate_prompt_source(self) -> "PipelineStepConfig":
+    def _validate_prompt_source(self) -> PipelineStepConfig:
         """Require either an instruction directory or explicit template."""
         if self.file_directory is None and self.full_prompt_template is None:
             raise ValueError(
@@ -154,7 +158,7 @@ class GenerateDefinitionsConfig(BaseModel):
         cls,
         config_data: dict[str, Any] | None = None,
         overrides: dict[str, Any] | None = None,
-    ) -> "GenerateDefinitionsConfig":
+    ) -> GenerateDefinitionsConfig:
         """Build config from optional file data and CLI overrides."""
         merged: dict[str, Any] = {}
         if config_data:
@@ -203,11 +207,14 @@ def _create_client_and_runtime_options(
                 model=step.model_name, **step.client_init_kwargs
             ), ClaudeRuntimeOptions(**step.client_run_kwargs)
         elif provider == "vllm":
-            from llm_annotator import VLLMClient, VLLMServerRuntimeOptions
+            from llm_annotator import (
+                VLLMOnlineClient,
+                VLLMOnlineRuntimeOptions,
+            )
 
-            return VLLMClient(
+            return VLLMOnlineClient(
                 model=step.model_name, **step.client_init_kwargs
-            ), VLLMServerRuntimeOptions(**step.client_run_kwargs)
+            ), VLLMOnlineRuntimeOptions(**step.client_run_kwargs)
         elif provider == "vllm-offline":
             from llm_annotator import (
                 VLLMOfflineClient,
@@ -325,13 +332,13 @@ def shuffle_definitions(sample: dict[str, Any]) -> dict[str, Any]:
     else:
         defs = [sample["definitie-v1"], sample["originele-definitie"]]
         names = ["definitie-v1", "originele-definitie"]
-    combined = list(zip(defs, names))
+    combined = list(zip(defs, names, strict=True))
 
     seed = int(hashlib.sha256(str(sample).encode("utf-8")).hexdigest(), 16) % (
         2**32
     )
     Random(seed).shuffle(combined)
-    defs, names = zip(*combined)
+    defs, names = zip(*combined, strict=True)
     output = {
         "random-definitie-1": defs[0],
         "random-definitie-2": defs[1],
@@ -347,7 +354,7 @@ def init_data(
     num_samples: int | None = 8,
     min_num_examples: int = 3,
     num_proc: int | None = None,
-    data_path: Path | None = ROOT.joinpath("data/anw_lemma_definitions.jsonl"),
+    data_path: Path | None = DEFAULT_DATA_PATH,
 ) -> Any:
     """Load and preprocess the ANW source dataset."""
     ds = load_dataset(
@@ -540,7 +547,7 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
             )
             prev_client_key = client_key
 
-        if step.task == "ranker" and config.add_revision_stage:
+        if step.task == "ranker" and "revisor" in pipe:
             plaatsen = ["eerste-plaats", "tweede-plaats", "derde-plaats"]
             plaatsen_cols = [step.post_field_renamer[pos] for pos in plaatsen]
             validate_fn = partial(
@@ -589,7 +596,7 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
             )
             print(
                 "A potential cause is that the model could not respond with"
-                " the full schema due to too-low max_tokens in"
+                " the full schema due to too-low max_completion_tokens in"
                 " client_run_kwargs. The stopping reasons for invalid"
                 " samples are below (valid='stop')."
             )
@@ -604,9 +611,7 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
                     f"{step.idx + 1}-{step.name}: Did not produce"
                     " valid_fields=True"
                 )
-                failed_samples_fh.write(
-                    f"{json.dumps(sample, default=str)}\\n"
-                )
+                failed_samples_fh.write(f"{json.dumps(sample, default=str)}\n")
 
         ds = filtered_ds.rename_columns(step.post_field_renamer)
 
@@ -621,18 +626,18 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
             cols_to_split = list(step.post_field_renamer.values())
             for col in cols_to_split:
                 ds = ds.map(
-                    lambda x: {
+                    lambda x, col=col: {
                         f"analyse_{col}": x[col]["analyse"],
                         f"score_{col}": x[col]["score"],
                     },
                     num_proc=config.num_proc,
                     remove_columns=[col],
                 )
-        elif step.task == "revisor" or (
-            step.task == "definer" and "revisor" not in pipe
-        ):
-            if step.last_of_task and "ranker" in pipe:
-                ds = ds.map(shuffle_definitions, num_proc=config.num_proc)
+        elif (
+            step.task == "revisor"
+            or (step.task == "definer" and "revisor" not in pipe)
+        ) and (step.last_of_task and "ranker" in pipe):
+            ds = ds.map(shuffle_definitions, num_proc=config.num_proc)
 
         if no_revision_ds is not None:
             new_cols = set(ds.column_names) - set(no_revision_ds.column_names)

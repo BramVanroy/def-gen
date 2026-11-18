@@ -1,7 +1,15 @@
 from datasets import Dataset
 
 
-cols = ["betekenis", "structuur", "revisie-nodig", "begrijpelijkheid", "substitueerbaarheid", "gebruik", "correctheid"]
+cols = [
+    "betekenis",
+    "structuur",
+    "revisie-nodig",
+    "begrijpelijkheid",
+    "substitueerbaarheid",
+    "gebruik",
+    "correctheid",
+]
 
 
 def main(fin: str):

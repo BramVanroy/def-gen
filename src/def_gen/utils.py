@@ -1,3 +1,5 @@
+"""Shared paths and JSON helpers."""
+
 import json
 from pathlib import Path
 from typing import Any
@@ -15,7 +17,6 @@ def safe_json_loads(text: str) -> dict[str, Any]:
     Returns:
         Parsed JSON object.
     """
-
     try:
         return json.loads(text)
     except json.JSONDecodeError as json_exc:
@@ -26,11 +27,10 @@ def safe_json_loads(text: str) -> dict[str, Any]:
 
 
 class PathCompatibleEncoder(json.JSONEncoder):
-    """
-    JSON encoder that converts Path objects to strings.
-    """
+    """JSON encoder that converts Path objects to strings."""
 
     def default(self, obj):
+        """Encode Path objects as strings and defer the rest to the base."""
         if isinstance(obj, Path):
             return str(obj)
         return super().default(obj)

@@ -26,7 +26,10 @@ def main(
         except ValueError:
             test_split_size = float(test_split_size)
 
-    if Path(hub_id_or_local_dir).exists() and Path(hub_id_or_local_dir).is_dir():
+    if (
+        Path(hub_id_or_local_dir).exists()
+        and Path(hub_id_or_local_dir).is_dir()
+    ):
         ds = load_from_disk(hub_id_or_local_dir)
     else:
         ds = load_dataset(hub_id_or_local_dir)["train"]
@@ -51,18 +54,32 @@ def main(
         ds_dict = ds.train_test_split(test_size=test_split_size, shuffle=False)
         train_len = len(ds_dict["train"])
         ds_dict["train"].to_pandas().to_excel(
-            output_excel_path.replace(".xlsx", f"_{train_len}train.xlsx"), index=False
+            output_excel_path.replace(".xlsx", f"_{train_len}train.xlsx"),
+            index=False,
         )
         test_len = len(ds_dict["test"])
-        ds_dict["test"].to_pandas().to_excel(output_excel_path.replace(".xlsx", f"_{test_len}test.xlsx"), index=False)
+        ds_dict["test"].to_pandas().to_excel(
+            output_excel_path.replace(".xlsx", f"_{test_len}test.xlsx"),
+            index=False,
+        )
 
 
 if __name__ == "__main__":
     import argparse
 
-    cparser = argparse.ArgumentParser(description="Prepare dataset for Lexit by exporting to Excel.")
-    cparser.add_argument("hub_id_or_local_dir", type=str, help="Hugging Face Hub dataset ID or local directory path.")
-    cparser.add_argument("output_excel_path", type=str, help="Path to save the output Excel file.")
+    cparser = argparse.ArgumentParser(
+        description="Prepare dataset for Lexit by exporting to Excel."
+    )
+    cparser.add_argument(
+        "hub_id_or_local_dir",
+        type=str,
+        help="Hugging Face Hub dataset ID or local directory path.",
+    )
+    cparser.add_argument(
+        "output_excel_path",
+        type=str,
+        help="Path to save the output Excel file.",
+    )
     cparser.add_argument(
         "--test_split_size",
         type=str,
@@ -71,7 +88,10 @@ if __name__ == "__main__":
         "If int, represents the absolute number of test samples. If not provided, no split is performed.",
     )
     cparser.add_argument(
-        "--shuffle_seed", type=int, default=42, help="Seed for shuffling the dataset before splitting/exporting."
+        "--shuffle_seed",
+        type=int,
+        default=42,
+        help="Seed for shuffling the dataset before splitting/exporting.",
     )
     cargs = cparser.parse_args()
 

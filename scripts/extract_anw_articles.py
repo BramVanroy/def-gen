@@ -2,8 +2,7 @@ import json
 from pathlib import Path
 from xml.etree.ElementTree import Element
 
-from datasets import Dataset, Sequence, Value
-from datasets.features import Features
+from datasets import Dataset
 from lxml import etree
 from tqdm import tqdm
 
@@ -23,13 +22,17 @@ def get_lemma_definitions(article_element: Element):
         "pid": int(article_element.attrib["pid"]),
         "id": int(article_element.attrib["ID"]),
         "laatst-bewerkt": str(article_element.attrib.get("last-modified")),
-        "betekenissen": []
+        "betekenissen": [],
     }
     # Loop over all Kernbetekenis elements
     for kernbetekenis_element in article_element.xpath(".//Kernbetekenis"):
         bet = {
-            "pid": int(kernbetekenis_element.attrib["pid"]) if "pid" in kernbetekenis_element.attrib else None,
-            "id": kernbetekenis_element.attrib["id"][3:] if "id" in kernbetekenis_element.attrib else None,
+            "pid": int(kernbetekenis_element.attrib["pid"])
+            if "pid" in kernbetekenis_element.attrib
+            else None,
+            "id": kernbetekenis_element.attrib["id"][3:]
+            if "id" in kernbetekenis_element.attrib
+            else None,
             "lemmavorm": None,
             "woordsoort": None,
             "definitie": None,
@@ -49,7 +52,9 @@ def get_lemma_definitions(article_element: Element):
         if def_el:
             bet["definitie"] = def_el[0].text
 
-        mini_def_el = kernbetekenis_element.xpath(".//definitieBody/MiniDefinitie")
+        mini_def_el = kernbetekenis_element.xpath(
+            ".//definitieBody/MiniDefinitie"
+        )
         if mini_def_el:
             bet["mini_definitie"] = mini_def_el[0].text
 
@@ -62,7 +67,9 @@ def get_lemma_definitions(article_element: Element):
     return artikel
 
 
-def extract_articles_from_xml(fin: str, fout: str | None = None, element_name: str = "artikel"):
+def extract_articles_from_xml(
+    fin: str, fout: str | None = None, element_name: str = "artikel"
+):
     """
     Read articles from a large XML file and write their definitions to a JSONL file.
 
@@ -70,7 +77,11 @@ def extract_articles_from_xml(fin: str, fout: str | None = None, element_name: s
         file_path (str): The path to the XML file.
         element_name (str): The name of the element to focus on (e.g., "artikel").
     """
-    pfout = Path(fout) if fout else Path(fin).parent.joinpath("anw_lemma_articles.jsonl")
+    pfout = (
+        Path(fout)
+        if fout
+        else Path(fin).parent.joinpath("anw_lemma_articles.jsonl")
+    )
 
     with pfout.open(encoding="utf-8", mode="w") as fhout:
         context = etree.iterparse(fin, events=("end",), tag=element_name)
@@ -86,7 +97,12 @@ def extract_articles_from_xml(fin: str, fout: str | None = None, element_name: s
     # Verify that article ID and PID, and definition PIDs are unique
     ds = Dataset.from_json(str(pfout))
     assert len(ds) == len(set(ds.unique("id")))
-    all_def_pids = [bet["pid"] for artikel in ds for bet in artikel["betekenissen"] if bet["pid"] is not None]
+    all_def_pids = [
+        bet["pid"]
+        for artikel in ds
+        for bet in artikel["betekenissen"]
+        if bet["pid"] is not None
+    ]
     assert len(all_def_pids) == len(set(all_def_pids))
 
     return pfout
@@ -94,7 +110,10 @@ def extract_articles_from_xml(fin: str, fout: str | None = None, element_name: s
 
 def explode_in_definitions(samples: dict[list]) -> dict:
     # Convert to a list of dictionaries first
-    samples = [dict(zip(samples, t)) for t in zip(*samples.values())]
+    samples = [
+        dict(zip(samples, t, strict=True))
+        for t in zip(*samples.values(), strict=True)
+    ]
     defs = {
         "artikel_pid": [],
         "artikel_id": [],
@@ -117,8 +136,12 @@ def explode_in_definitions(samples: dict[list]) -> dict:
                 defs["artikel_id"].append(sample["id"])
                 # Datasets has converted the date string to datetime
                 # so we convert it back to yyyy-mm-dd here
-                defs["artikel_laatst_bewerkt"].append(sample["laatst-bewerkt"].strftime('%Y-%m-%d'))
-                defs["artikel_meerdere_betekenissen"].append(sample["meerdere_betekenissen"])
+                defs["artikel_laatst_bewerkt"].append(
+                    sample["laatst-bewerkt"].strftime("%Y-%m-%d")
+                )
+                defs["artikel_meerdere_betekenissen"].append(
+                    sample["meerdere_betekenissen"]
+                )
                 defs["betekenis_pid"].append(bet["pid"])
                 defs["betekenis_id"].append(bet["id"])
                 defs["lemmavorm"].append(bet["lemmavorm"])
@@ -144,7 +167,11 @@ def main(fin: str, num_workers: int | None = None):
     # Then extract the definitions from the articles
     ds = Dataset.from_json(str(pfout))
     print(ds)
-    ds = ds.filter(lambda s: len(s["betekenissen"]) > 0, num_proc=num_workers, desc="Filtering empty definitions")
+    ds = ds.filter(
+        lambda s: len(s["betekenissen"]) > 0,
+        num_proc=num_workers,
+        desc="Filtering empty definitions",
+    )
 
     print("After filtering empty", ds)
     ds_defs = ds.map(
@@ -166,6 +193,11 @@ if __name__ == "__main__":
         description="Extract lemma articles as well as its definitions from an XML file. Output files will be written to the same directory as the input file."
     )
     cparser.add_argument("fin", type=str, help="Path to the XML file.")
-    cparser.add_argument("-j", "--num_workers", type=int, help="Number of workers to use for processing.")
+    cparser.add_argument(
+        "-j",
+        "--num_workers",
+        type=int,
+        help="Number of workers to use for processing.",
+    )
     cargs = cparser.parse_args()
     main(cargs.fin, cargs.num_workers)

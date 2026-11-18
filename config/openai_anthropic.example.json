@@ -15,7 +15,7 @@
       "file_directory": "/home/bram/python/def-gen/instructions/definer",
       "provider": "openai",
       "client_run_kwargs": {
-        "max_tokens": 384
+        "max_completion_tokens": 384
       },
       "post_field_renamer": {
         "definitie": "definitie-v1"
@@ -28,7 +28,7 @@
       "file_directory": "/home/bram/python/def-gen/instructions/judge",
       "provider": "anthropic",
       "client_run_kwargs": {
-        "max_tokens": 768
+        "max_completion_tokens": 768
       },
       "post_field_renamer": {
         "begrijpelijkheid": "begrijpelijkheid_judge_claude",

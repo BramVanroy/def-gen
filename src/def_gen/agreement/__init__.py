@@ -1,3 +1,5 @@
+"""Inter-rater agreement metrics for definition judgements."""
+
 from enum import StrEnum
 
 

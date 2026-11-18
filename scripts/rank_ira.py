@@ -1,6 +1,6 @@
 import json
+from collections.abc import Iterable
 from functools import partial
-from typing import Iterable
 
 import pandas as pd
 from datasets import load_from_disk
@@ -56,7 +56,9 @@ def agreement_2raters(df: pd.DataFrame, columns: Iterable[str]) -> dict:
 
 
 def unshuffle_df(
-    df: pd.DataFrame, shuffle_col: str = "shuffle-order", ranking_prefix: str = "ranking_ranker_"
+    df: pd.DataFrame,
+    shuffle_col: str = "shuffle-order",
+    ranking_prefix: str = "ranking_ranker_",
 ) -> pd.DataFrame:
     """Unshuffle the definitions in the dataframe based on the shuffle order column.
 
@@ -81,11 +83,15 @@ def unshuffle_df(
                 if order == CANON_ORDER:
                     row[f"unshuffled_{c}"] = val
                     if was_shuffled is True:
-                        raise ValueError(f"Inconsistent shuffling detected in row: {row}")
+                        raise ValueError(
+                            f"Inconsistent shuffling detected in row: {row}"
+                        )
                     was_shuffled = False
                 else:
                     if was_shuffled is False:
-                        raise ValueError(f"Inconsistent shuffling detected in row: {row}")
+                        raise ValueError(
+                            f"Inconsistent shuffling detected in row: {row}"
+                        )
                     if val == "A>B":
                         row[f"unshuffled_{c}"] = LABEL_MAP["2 beter dan 1"]
                     elif val == "B>A":
@@ -93,7 +99,9 @@ def unshuffle_df(
                     elif val == "A=B":
                         row[f"unshuffled_{c}"] = LABEL_MAP["evenwaardig"]
                     else:
-                        raise ValueError(f"Unexpected value {val} in column {c} when unshuffling.")
+                        raise ValueError(
+                            f"Unexpected value {val} in column {c} when unshuffling."
+                        )
                     was_shuffled = True
 
         row["was_shuffled"] = was_shuffled
@@ -122,8 +130,11 @@ def main(
     ds = load_from_disk(dir_dataset)
     ranking_cols = [c for c in ds.column_names if c.startswith(ranking_prefix)]
     # Rename values in ranking columns to standard labels
-    ds = ds.map(lambda example: {k: LABEL_MAP[example[k]] for k in ranking_cols}, num_proc=num_proc)
-    ds = ds.select_columns(ranking_cols + [shuffle_order_col])
+    ds = ds.map(
+        lambda example: {k: LABEL_MAP[example[k]] for k in ranking_cols},
+        num_proc=num_proc,
+    )
+    ds = ds.select_columns([*ranking_cols, shuffle_order_col])
 
     df = ds.to_pandas()
     df = unshuffle_df(
@@ -138,7 +149,7 @@ def main(
         agreement_fn,
         df,
         ci_keys=["cohens_kappa", "fleiss_kappa", "krippendorff_alpha_nominal"],
-        num_bootstraps=num_bootstraps
+        num_bootstraps=num_bootstraps,
     )
 
     print("Agreement summary:")
@@ -157,11 +168,23 @@ def main(
 if __name__ == "__main__":
     import argparse
 
-    cparser = argparse.ArgumentParser(description="Compute inter-rater agreement statistics for rankings.")
-    cparser.add_argument("dir_dataset", type=str, help="Path to the dataset directory.")
-    cparser.add_argument("--fout", type=str, default=None, help="Optional path to save the summary as a JSON file.")
+    cparser = argparse.ArgumentParser(
+        description="Compute inter-rater agreement statistics for rankings."
+    )
     cparser.add_argument(
-        "--num_bootstraps", type=int, default=1000, help="Number of bootstrap samples for confidence intervals."
+        "dir_dataset", type=str, help="Path to the dataset directory."
+    )
+    cparser.add_argument(
+        "--fout",
+        type=str,
+        default=None,
+        help="Optional path to save the summary as a JSON file.",
+    )
+    cparser.add_argument(
+        "--num_bootstraps",
+        type=int,
+        default=1000,
+        help="Number of bootstrap samples for confidence intervals.",
     )
     cargs = cparser.parse_args()
 

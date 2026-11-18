@@ -1,5 +1,7 @@
+"""Bootstrap confidence intervals for agreement statistics."""
+
 from collections import defaultdict
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 import numpy as np
 import pandas as pd
@@ -16,10 +18,13 @@ def bootstrap_agreement(
     """Perform bootstrap resampling to compute confidence intervals for agreement statistics on a given agreement function.
 
     Args:
+        agreement_fn: Function that takes a dataframe and returns a dict of
+            agreement statistics.
         df (pd.DataFrame): Dataframe containing rater columns.
         num_bootstraps (int): Number of bootstrap samples.
         seed (int | None): Random seed for reproducibility.
         ci_keys (Iterable | None): Keys to compute confidence intervals for. If None, all keys from agreement_fn result are used.
+
     Returns:
         dict: Dictionary with 95% confidence intervals for agreement statistics.
     """
