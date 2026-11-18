@@ -216,18 +216,33 @@ def test_percent_agreement_without_complete_rows_is_nan() -> None:
     assert np.isnan(calculate_percent_agreement(df, ["r1", "r2"]))
 
 
-def test_preference_rates_count_all_raters() -> None:
-    rates = calculate_preference_rates(_small_df(), ["r1", "r2"])
-
-    assert rates == {"a": pytest.approx(5 / 8), "b": pytest.approx(3 / 8)}
-
-
-def test_preference_rates_ignore_missing_values() -> None:
-    df = pd.DataFrame({"r1": ["a", None], "r2": ["a", "b"]})
+def test_preference_rates_are_computed_per_rater() -> None:
+    # r1: a 3/4, b 1/4; r2: a 2/4, b 2/4
+    df = pd.DataFrame({"r1": ["a", "a", "a", "b"], "r2": ["a", "a", "b", "b"]})
 
     rates = calculate_preference_rates(df, ["r1", "r2"])
 
-    assert rates == {"a": pytest.approx(2 / 3), "b": pytest.approx(1 / 3)}
+    assert rates == {
+        "r1": {"a": pytest.approx(0.75), "b": pytest.approx(0.25)},
+        "r2": {"a": pytest.approx(0.5), "b": pytest.approx(0.5)},
+    }
+
+
+def test_preference_rates_use_each_raters_own_non_missing_ratings() -> None:
+    df = pd.DataFrame({"r1": ["a", None, "b"], "r2": ["a", "a", "a"]})
+
+    rates = calculate_preference_rates(df, ["r1", "r2"])
+
+    assert rates["r1"] == {"a": pytest.approx(0.5), "b": pytest.approx(0.5)}
+    assert rates["r2"] == {"a": pytest.approx(1.0), "b": 0.0}
+
+
+def test_preference_rates_report_unused_categories_as_zero() -> None:
+    df = pd.DataFrame({"r1": ["a", "a"]})
+
+    rates = calculate_preference_rates(df, ["r1"], categories=["a", "b", "c"])
+
+    assert rates == {"r1": {"a": 1.0, "b": 0.0, "c": 0.0}}
 
 
 def test_confusion_matrix_counts_label_pairs() -> None:

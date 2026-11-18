@@ -1,6 +1,6 @@
 """Agreement metrics between raters."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import Literal
 
 import krippendorff
@@ -179,27 +179,39 @@ def calculate_gwet_ac1(df: pd.DataFrame, columns: Sequence[str]) -> float:
 
 
 def calculate_preference_rates(
-    df: pd.DataFrame, columns: Iterable[str]
-) -> dict:
-    """Calculate preference rates for each category across multiple raters.
+    df: pd.DataFrame,
+    columns: Sequence[str],
+    categories: Sequence | None = None,
+) -> dict[str, dict]:
+    """Calculate how often each rater chose each label.
 
-    This function computes how often each category was selected by all raters,
-    providing insight into overall preferences in the annotations. In other words
-    we are aggregating over all raters to see which categories are most frequently chosen.
+    Each rater's rates are proportions of that rater's non-missing ratings, so
+    they sum to 1 per rater.
 
     Args:
         df: DataFrame containing the rater annotations.
-        columns: Iterable of column names representing the raters.
+        columns: Column names, one per rater.
+        categories: Labels to report for every rater (with rate 0 if unused).
+            Defaults to the labels that occur in any of the columns.
 
     Returns:
-        dict: Mapping from category to its preference rate (proportion of
-            total selections).
+        dict: Mapping from rater column to a mapping from label to rate. A
+            rater without any rating gets NaN for every label.
+
+    Examples:
+        >>> df = pd.DataFrame({"r1": ["a", "a", "b"], "r2": ["a", None, "a"]})
+        >>> calculate_preference_rates(df, ["r1", "r2"])
+        {'r1': {'a': 0.6666666666666666, 'b': 0.3333333333333333}, 'r2': {'a': 1.0, 'b': 0.0}}
     """
-    flat = df[columns].stack().dropna()
-    categories = flat.unique().tolist()
-    counts = flat.value_counts().reindex(categories, fill_value=0).astype(int)
-    rates = (counts / counts.sum()).to_dict()
-    return rates
+    if categories is None:
+        categories = df[list(columns)].stack().dropna().unique().tolist()
+    return {
+        col: df[col]
+        .value_counts(normalize=True)
+        .reindex(categories, fill_value=0.0)
+        .to_dict()
+        for col in columns
+    }
 
 
 def calculate_percent_agreement(
