@@ -6,6 +6,7 @@
   "num_proc": 4,
   "root_output_dir": "outputs/anw_api_clients",
   "hub_id": null,
+  "allow_paid_api": false,
   "seed": 42,
   "steps": [
     {
