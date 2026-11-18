@@ -29,6 +29,7 @@ def _make_step(**kwargs):
         "schema": None,
         "system_message": None,
         "last_of_task": True,
+        "order_rotation": 0,
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -361,6 +362,8 @@ class _RunDataset:
         _RunDataset.pushed = (hub_id, private)
 
     def __getitem__(self, key):
+        if isinstance(key, int):
+            return self.rows[key]
         return [row[key] for row in self.rows]
 
     def __len__(self):
@@ -1032,3 +1035,82 @@ def test_run_generation_applies_num_samples_to_hub_dataset(
     )
 
     assert seen == [expected]
+
+
+def _candidate_ds() -> Dataset:
+    ds = Dataset.from_list(
+        [
+            {
+                "definitie-v1": "v1",
+                "definitie-v2": "v2",
+                "originele-definitie": "orig",
+                "lemmavorm": f"woord{i}",
+            }
+            for i in range(5)
+        ]
+    )
+    return ds.map(dg.shuffle_definitions)
+
+
+def test_ranker_rotation_zero_matches_shuffled_definitions() -> None:
+    ds = _candidate_ds()
+    step = _make_step(name="rk", task="ranker")
+
+    out = dg._add_ranker_positions(ds, step, num_proc=1)
+
+    for row in out:
+        for i in (1, 2, 3):
+            assert (
+                row[f"positie-definitie-{i}"] == row[f"random-definitie-{i}"]
+            )
+        assert row["volgorde_rk"] == row["shuffle-order"]
+
+
+def test_ranker_rotation_shifts_candidates_left() -> None:
+    ds = _candidate_ds()
+    step = _make_step(name="rk", task="ranker", order_rotation=1)
+
+    out = dg._add_ranker_positions(ds, step, num_proc=1)
+
+    for row in out:
+        assert row["volgorde_rk"] == [
+            row["shuffle-order"][1],
+            row["shuffle-order"][2],
+            row["shuffle-order"][0],
+        ]
+        assert row["positie-definitie-1"] == row["random-definitie-2"]
+        assert row["positie-definitie-3"] == row["random-definitie-1"]
+
+
+def test_ranker_rotation_must_be_below_candidate_count() -> None:
+    step = _make_step(name="rk", task="ranker", order_rotation=3)
+
+    with pytest.raises(ValueError, match="order_rotation 3"):
+        dg._add_ranker_positions(_candidate_ds(), step, num_proc=1)
+
+
+def test_run_generation_drops_position_columns_and_keeps_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    pushed: list[_RunDataset] = []
+    monkeypatch.setattr(
+        _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
+    )
+    row = {"definitie-v1": "a", "originele-definitie": "b"}
+    steps = [
+        _make_step(name="d", post_field_renamer={}),
+        _make_step(
+            name="rk", task="ranker", order_rotation=1, post_field_renamer={}
+        ),
+    ]
+    _patch_inputs(monkeypatch, _RunDataset([row]), steps)
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id="o/x")
+    )
+
+    out = pushed[0].rows[0]
+    assert out["volgorde_rk"] == out["shuffle-order"][::-1]
+    assert not any(c.startswith("positie-definitie-") for c in out)

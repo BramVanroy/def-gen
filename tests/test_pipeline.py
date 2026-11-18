@@ -225,3 +225,9 @@ def test_explicit_renamer_is_kept() -> None:
     )
 
     assert step.post_field_renamer == {"gebruik": "g"}
+
+
+def test_order_rotation_rejected_for_non_ranker_steps() -> None:
+    with pytest.raises(ValueError, match="only allowed for ranker"):
+        _step("d", "definer", order_rotation=1)
+    assert _step("rk", "ranker", order_rotation=1).order_rotation == 1

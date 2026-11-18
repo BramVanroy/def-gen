@@ -28,7 +28,8 @@ class Step:
 
     `definition_column` is required for judge steps (the column that is judged,
     exposed to the prompt as `te-beoordelen-definitie`) and rejected for other
-    tasks. Judge and feedback steps without a `post_field_renamer` get
+    tasks. `order_rotation` is only allowed for ranker steps (see
+    `PipelineStepConfig`). Judge and feedback steps without a `post_field_renamer` get
     `{field: f"{field}_{name}"}` for every property of their schema.
     """
 
@@ -47,6 +48,7 @@ class Step:
     client_init_kwargs: dict = field(default_factory=dict)
     client_run_kwargs: dict = field(default_factory=dict)
     definition_column: str | None = None
+    order_rotation: int = 0
 
     def __post_init__(self):
         if self.full_prompt_template and self.file_directory:
@@ -102,6 +104,11 @@ class Step:
         if self.task != Task.judge and self.definition_column:
             raise ValueError(
                 "definition_column is only allowed for judge steps"
+                f" (step {self.name!r})."
+            )
+        if self.task != Task.ranker and self.order_rotation:
+            raise ValueError(
+                "order_rotation is only allowed for ranker steps"
                 f" (step {self.name!r})."
             )
         if (

@@ -66,6 +66,11 @@ class PipelineStepConfig(BaseModel):
             Judge and feedback steps default to `{field}_{name}`.
         definition_column: Column that a judge step evaluates. Required for
             judge steps and rejected for other tasks.
+        order_rotation: Ranker steps only. The shuffled candidate order
+            (`shuffle-order`) is rotated left by this many places before it
+            is shown as `positie-definitie-i`. Running rotations 0 to n-1 in
+            separate ranker steps gives a cyclic Latin square over the
+            positions. Must be smaller than the number of candidates.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -85,6 +90,7 @@ class PipelineStepConfig(BaseModel):
     client_run_kwargs: dict[str, Any] = Field(default_factory=dict)
     post_field_renamer: dict[str, str] = Field(default_factory=dict)
     definition_column: str | None = None
+    order_rotation: int = Field(default=0, ge=0)
 
     @field_validator("file_directory", mode="before")
     @classmethod
@@ -120,6 +126,7 @@ class PipelineStepConfig(BaseModel):
             client_init_kwargs=self.client_init_kwargs,
             client_run_kwargs=self.client_run_kwargs,
             definition_column=self.definition_column,
+            order_rotation=self.order_rotation,
         )
 
 
@@ -469,6 +476,7 @@ def build_pipeline(config: GenerateDefinitionsConfig) -> Pipeline:
 
 ROW_IDX_COL = "__row_idx"
 JUDGE_INPUT_COL = "te-beoordelen-definitie"
+POSITION_PREFIX = "positie-definitie-"
 
 
 def _drop_invalid(
@@ -599,6 +607,44 @@ def _merge_unrevised(
     return merged.sort(ROW_IDX_COL).remove_columns([ROW_IDX_COL])
 
 
+def _add_ranker_positions(ds: Any, step: Step, num_proc: int) -> Any:
+    """Fill `positie-definitie-i` columns from `shuffle-order` rotated left.
+
+    Position i shows the candidate `rotated[i - 1]`. The used order is stored
+    in `volgorde_<step.name>`.
+
+    Args:
+        ds: Dataset with `shuffle-order` and the candidate columns.
+        step: The ranker step.
+        num_proc: Number of workers for dataset operations.
+
+    Returns:
+        The dataset with the position columns and the order column.
+
+    Raises:
+        ValueError: If the rotation is not smaller than the number of
+            candidates.
+    """
+    num_candidates = len(ds[0]["shuffle-order"])
+    if not 0 <= step.order_rotation < num_candidates:
+        raise ValueError(
+            f"order_rotation {step.order_rotation} of step {step.name!r}"
+            f" must be in [0, {num_candidates})."
+        )
+
+    def add_positions(sample: dict[str, Any]) -> dict[str, Any]:
+        order = sample["shuffle-order"]
+        rotated = order[step.order_rotation :] + order[: step.order_rotation]
+        out = {
+            f"{POSITION_PREFIX}{i}": sample[source]
+            for i, source in enumerate(rotated, 1)
+        }
+        out[f"volgorde_{step.name}"] = rotated
+        return out
+
+    return ds.map(add_positions, num_proc=num_proc)
+
+
 def run_generation(config: GenerateDefinitionsConfig) -> None:
     """Run the full generation workflow for the provided config."""
     set_seed(config.seed)
@@ -700,6 +746,8 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
 
         elif step.task == "judge":
             ds = ds.add_column(JUDGE_INPUT_COL, ds[step.definition_column])
+        elif step.task == "ranker":
+            ds = _add_ranker_positions(ds, step, config.num_proc)
 
         if len(ds) > 0:
             ds = anno.annotate_dataset(
@@ -724,6 +772,10 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
             ds = _merge_unrevised(ds, unrevised_ds, step, task_prefix)
         elif step.task == "judge":
             ds = ds.remove_columns([JUDGE_INPUT_COL])
+        elif step.task == "ranker":
+            ds = ds.remove_columns(
+                [c for c in ds.column_names if c.startswith(POSITION_PREFIX)]
+            )
 
         if step.task == "feedback" and step.last_of_task:
             ds = ds.map(
