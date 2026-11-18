@@ -79,7 +79,7 @@ each adds columns to the dataset.
 | `definer` | `lemmavorm`, `voorbeelden` | `definitie` (renamed to `definitie-v1`) |
 | `feedback` | `definitie-v1` | six criterion texts and `revisie-nodig` per step, joined in `feedback` |
 | `revisor` | `definitie-v1`, `feedback` | `nieuwe-definitie` (renamed, for example `definitie-v2`) |
-| `judge` | the column in `definition_column` | `analyse_<column>` and `score_<column>` per criterion |
+| `judge` | the column in `definition_column` | `analyse_<field>` and `score_<field>` per criterion, where `<field>` is the renamed criterion |
 | `ranker` | two or three candidate definitions | `argumentatie_*`, `ranking_*` and `volgorde_<step>` |
 
 A `definer` step has to come first and only one is allowed. A `revisor` needs
@@ -141,7 +141,7 @@ outputs/study/writer-gemma4-26b-a4b/
   1-definer-<name>/done            dataset after step 1
   1-definer-<name>/attrition.json
   1-definer-<name>/failed_samples.jsonl
-  2-judge-<name>/done
+  2-ranker-<name>/done
   ...
   full_process_done                final dataset
 ```
@@ -162,7 +162,6 @@ A row of a writer run has, among others, these columns:
 | `voorbeelden` | `"- De wasmachine staat in de kelder.\n- ..."` |
 | `originele-definitie` | the ANW definition |
 | `definitie-v1` | the written definition |
-| `score_correctheid_judge_qwen38` | `4` |
 | `ranking_ranker_qwen38_r0` | `"2 beter dan 1"` |
 | `volgorde_ranker-qwen38-r0` | `["definitie-v1", "originele-definitie"]` |
 | `shuffle-order` | `["originele-definitie", "definitie-v1"]` |
@@ -273,7 +272,7 @@ uv run python scripts/generate_definitions.py config/offline_vllm.example.json
 ```bash
 uv run python scripts/prepare_for_lexit.py \
     outputs/study/writer-gemma4-26b-a4b/full_process_done \
-    lexit.xlsx --test_split_size 100
+    lexit.xlsx --test_split_size 300
 ```
 
 The sheet holds the lemma, the examples, the shuffled definitions
