@@ -30,6 +30,7 @@ def _make_step(**kwargs):
         "system_message": None,
         "last_of_task": True,
         "order_rotation": 0,
+        "candidate_columns": None,
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -255,6 +256,7 @@ def test_check_rank_validity() -> None:
 
 def test_build_pipeline_uses_custom_steps() -> None:
     config = dg.GenerateDefinitionsConfig(
+        allow_paid_api=True,
         steps=[
             dg.PipelineStepConfig(
                 name="custom-definer",
@@ -266,7 +268,7 @@ def test_build_pipeline_uses_custom_steps() -> None:
                 client_run_kwargs={"max_completion_tokens": 42},
                 post_field_renamer={"definitie": "definitie-v1"},
             )
-        ]
+        ],
     )
 
     pipe = dg.build_pipeline(config)
@@ -1088,6 +1090,102 @@ def test_ranker_rotation_must_be_below_candidate_count() -> None:
 
     with pytest.raises(ValueError, match="order_rotation 3"):
         dg._add_ranker_positions(_candidate_ds(), step, num_proc=1)
+
+
+def _h2h_ds(n: int = 200) -> Dataset:
+    return Dataset.from_list(
+        [
+            {"betekenis_pid": f"p{i}", "da": f"a{i}", "db": f"b{i}"}
+            for i in range(n)
+        ]
+    )
+
+
+def test_candidate_order_is_stable_and_column_order_independent() -> None:
+    sample = {"betekenis_pid": "p1", "da": "x", "db": "y"}
+
+    first = dg.candidate_order(sample, ["da", "db"])
+
+    assert dg.candidate_order(sample, ["da", "db"]) == first
+    assert dg.candidate_order(sample, ["db", "da"]) == first
+    assert dg.candidate_order({**sample, "da": "other"}, ["da", "db"]) == first
+
+
+def test_ranker_candidate_columns_rotation_swaps_two_way_order() -> None:
+    cols = ["da", "db"]
+    r0 = dg._add_ranker_positions(
+        _h2h_ds(10),
+        _make_step(name="r0", task="ranker", candidate_columns=cols),
+        num_proc=1,
+    )
+    r1 = dg._add_ranker_positions(
+        _h2h_ds(10),
+        _make_step(
+            name="r1", task="ranker", candidate_columns=cols, order_rotation=1
+        ),
+        num_proc=1,
+    )
+
+    for a, b in zip(r0, r1, strict=True):
+        assert a["volgorde_r0"] == b["volgorde_r1"][::-1]
+        assert a["positie-definitie-1"] == b["positie-definitie-2"]
+        assert a["positie-definitie-1"] == a[a["volgorde_r0"][0]]
+        assert "positie-definitie-3" not in a
+
+
+def test_ranker_candidate_columns_order_is_balanced() -> None:
+    out = dg._add_ranker_positions(
+        _h2h_ds(400),
+        _make_step(name="r", task="ranker", candidate_columns=["da", "db"]),
+        num_proc=1,
+    )
+
+    first_is_da = sum(row["volgorde_r"][0] == "da" for row in out)
+
+    assert 150 < first_is_da < 250
+
+
+def test_ranker_candidate_columns_rotation_validated() -> None:
+    step = _make_step(
+        name="r",
+        task="ranker",
+        candidate_columns=["da", "db"],
+        order_rotation=2,
+    )
+
+    with pytest.raises(ValueError, match="order_rotation 2"):
+        dg._add_ranker_positions(_h2h_ds(3), step, num_proc=1)
+
+
+def _paid_config(**overrides) -> dg.GenerateDefinitionsConfig:
+    step = {
+        "name": "definer-paid",
+        "task": "definer",
+        "model_name": "m",
+        "provider": "openai",
+        "full_prompt_template": "p",
+    }
+    return dg.GenerateDefinitionsConfig(steps=[step], **overrides)
+
+
+def test_paid_provider_is_refused_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_client(step):
+        raise AssertionError("client must not be created")
+
+    monkeypatch.setattr(dg, "_create_client_and_runtime_options", no_client)
+
+    with pytest.raises(ValueError, match="definer-paid"):
+        dg.build_pipeline(_paid_config())
+    with pytest.raises(ValueError, match="definer-paid"):
+        dg.run_generation(_paid_config())
+
+
+def test_paid_provider_builds_when_allowed() -> None:
+    pipe = dg.build_pipeline(_paid_config(allow_paid_api=True))
+
+    assert pipe[0].provider == "openai"
 
 
 def test_run_generation_drops_position_columns_and_keeps_order(
