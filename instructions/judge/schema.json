@@ -10,8 +10,8 @@
 				},
 				"score": {
 					"type": "integer",
-					"minimum": 0,
-					"maximum": 100
+					"minimum": 1,
+					"maximum": 5
 				}
 			},
 			"required": ["analyse", "score"]
@@ -24,8 +24,8 @@
 				},
 				"score": {
 					"type": "integer",
-					"minimum": 0,
-					"maximum": 100
+					"minimum": 1,
+					"maximum": 5
 				}
 			},
 			"required": ["analyse", "score"]
@@ -38,8 +38,8 @@
 				},
 				"score": {
 					"type": "integer",
-					"minimum": 0,
-					"maximum": 100
+					"minimum": 1,
+					"maximum": 5
 				}
 			},
 			"required": ["analyse", "score"]
@@ -52,8 +52,8 @@
 				},
 				"score": {
 					"type": "integer",
-					"minimum": 0,
-					"maximum": 100
+					"minimum": 1,
+					"maximum": 5
 				}
 			},
 			"required": ["analyse", "score"]
@@ -66,8 +66,8 @@
 				},
 				"score": {
 					"type": "integer",
-					"minimum": 0,
-					"maximum": 100
+					"minimum": 1,
+					"maximum": 5
 				}
 			},
 			"required": ["analyse", "score"]
@@ -80,8 +80,8 @@
 				},
 				"score": {
 					"type": "integer",
-					"minimum": 0,
-					"maximum": 100
+					"minimum": 1,
+					"maximum": 5
 				}
 			},
 			"required": ["analyse", "score"]
