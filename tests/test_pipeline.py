@@ -6,6 +6,8 @@ from def_gen.pipeline import Pipeline, Step, Task
 
 
 def _step(name: str, task: str, **kwargs) -> Step:
+    if task == "judge":
+        kwargs.setdefault("definition_column", "definitie-v1")
     return Step(
         name=name,
         task=task,
@@ -184,3 +186,42 @@ def test_pipeline_to_dict_serializes_steps() -> None:
     assert [s["name"] for s in out["steps"]] == ["d", "f"]
     assert out["steps"][0]["task"] == Task.definer
     assert out["steps"][1]["idx"] == 1
+
+
+def test_judge_step_requires_definition_column() -> None:
+    with pytest.raises(ValueError, match="requires definition_column"):
+        Step(
+            name="j",
+            task="judge",
+            model_name="m",
+            provider="openai",
+            full_prompt_template="p",
+        )
+
+
+def test_definition_column_rejected_for_other_tasks() -> None:
+    with pytest.raises(ValueError, match="only allowed for judge"):
+        _step("r", "ranker", definition_column="definitie-v1")
+
+
+@pytest.mark.parametrize("task", ["judge", "feedback"])
+def test_empty_renamer_defaults_to_field_and_step_name(task: str) -> None:
+    schema = {"properties": {"gebruik": {}, "betekenis": {}}}
+
+    step = _step("s1", task, schema=schema)
+
+    assert step.post_field_renamer == {
+        "gebruik": "gebruik_s1",
+        "betekenis": "betekenis_s1",
+    }
+
+
+def test_explicit_renamer_is_kept() -> None:
+    step = _step(
+        "s1",
+        "feedback",
+        schema={"properties": {"gebruik": {}}},
+        post_field_renamer={"gebruik": "g"},
+    )
+
+    assert step.post_field_renamer == {"gebruik": "g"}

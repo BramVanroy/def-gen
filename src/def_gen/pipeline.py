@@ -25,6 +25,11 @@ class Step:
     The prompt comes either from `full_prompt_template` or from a
     `file_directory` that holds `specific.md`, and optionally `shared.md`
     (prepended to the prompt) and `schema.json` (the output schema).
+
+    `definition_column` is required for judge steps (the column that is judged,
+    exposed to the prompt as `te-beoordelen-definitie`) and rejected for other
+    tasks. Judge and feedback steps without a `post_field_renamer` get
+    `{field: f"{field}_{name}"}` for every property of their schema.
     """
 
     name: str
@@ -41,6 +46,7 @@ class Step:
     post_field_renamer: dict[str, str] = field(default_factory=dict)
     client_init_kwargs: dict = field(default_factory=dict)
     client_run_kwargs: dict = field(default_factory=dict)
+    definition_column: str | None = None
 
     def __post_init__(self):
         if self.full_prompt_template and self.file_directory:
@@ -88,6 +94,24 @@ class Step:
                 self.schema = json.loads(
                     Path(schema_file).read_text(encoding="utf-8")
                 )
+
+        if self.task == Task.judge and not self.definition_column:
+            raise ValueError(
+                f"Judge step {self.name!r} requires definition_column."
+            )
+        if self.task != Task.judge and self.definition_column:
+            raise ValueError(
+                "definition_column is only allowed for judge steps"
+                f" (step {self.name!r})."
+            )
+        if (
+            self.task in (Task.judge, Task.feedback)
+            and not self.post_field_renamer
+            and self.schema
+        ):
+            self.post_field_renamer = {
+                f: f"{f}_{self.name}" for f in self.schema["properties"]
+            }
 
     def __repr__(self):
         return f"Step(idx={self.idx}, name={self.name}, task={self.task}, model_name={self.model_name})"

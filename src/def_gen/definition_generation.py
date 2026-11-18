@@ -63,6 +63,9 @@ class PipelineStepConfig(BaseModel):
         client_init_kwargs: Extra kwargs forwarded to the client constructor.
         client_run_kwargs: Runtime options kwargs for the provider.
         post_field_renamer: Mapping from output fields to destination names.
+            Judge and feedback steps default to `{field}_{name}`.
+        definition_column: Column that a judge step evaluates. Required for
+            judge steps and rejected for other tasks.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -81,6 +84,7 @@ class PipelineStepConfig(BaseModel):
     client_init_kwargs: dict[str, Any] = Field(default_factory=dict)
     client_run_kwargs: dict[str, Any] = Field(default_factory=dict)
     post_field_renamer: dict[str, str] = Field(default_factory=dict)
+    definition_column: str | None = None
 
     @field_validator("file_directory", mode="before")
     @classmethod
@@ -115,6 +119,7 @@ class PipelineStepConfig(BaseModel):
             post_field_renamer=self.post_field_renamer,
             client_init_kwargs=self.client_init_kwargs,
             client_run_kwargs=self.client_run_kwargs,
+            definition_column=self.definition_column,
         )
 
 
@@ -463,6 +468,7 @@ def build_pipeline(config: GenerateDefinitionsConfig) -> Pipeline:
 
 
 ROW_IDX_COL = "__row_idx"
+JUDGE_INPUT_COL = "te-beoordelen-definitie"
 
 
 def _drop_invalid(
@@ -692,6 +698,9 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
                 num_proc=config.num_proc,
             )
 
+        elif step.task == "judge":
+            ds = ds.add_column(JUDGE_INPUT_COL, ds[step.definition_column])
+
         if len(ds) > 0:
             ds = anno.annotate_dataset(
                 output_dir=step_dir,
@@ -713,6 +722,8 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
 
         if step.task == "revisor":
             ds = _merge_unrevised(ds, unrevised_ds, step, task_prefix)
+        elif step.task == "judge":
+            ds = ds.remove_columns([JUDGE_INPUT_COL])
 
         if step.task == "feedback" and step.last_of_task:
             ds = ds.map(

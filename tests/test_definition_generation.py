@@ -917,15 +917,29 @@ def test_run_generation_splits_judge_scores(
     monkeypatch.setattr(
         _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
     )
+    judged: list[list[str]] = []
+    original = scripted.annotate_dataset
+
+    def spy(self, **kwargs):
+        if kwargs["task_prefix"].startswith("2-"):
+            judged.append(kwargs["dataset"]["te-beoordelen-definitie"])
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(scripted, "annotate_dataset", spy)
     steps = [
         _make_step(name="d", post_field_renamer={}),
         _make_step(
             name="j",
             task="judge",
+            definition_column="originele-definitie",
             post_field_renamer={"raw": "begrijpelijkheid"},
         ),
     ]
-    _patch_inputs(monkeypatch, _RunDataset([{"id": 0}]), steps)
+    _patch_inputs(
+        monkeypatch,
+        _RunDataset([{"id": 0, "originele-definitie": "orig"}]),
+        steps,
+    )
 
     dg.run_generation(
         dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id="o/x")
@@ -935,6 +949,8 @@ def test_run_generation_splits_judge_scores(
     assert row["analyse_begrijpelijkheid"] == "goed"
     assert row["score_begrijpelijkheid"] == 4
     assert "begrijpelijkheid" not in row
+    assert judged == [["orig"]]
+    assert "te-beoordelen-definitie" not in row
 
 
 def test_run_generation_concats_feedback_after_last_feedback_step(
