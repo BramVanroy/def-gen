@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from def_gen.agreement import RaterMetric
 from def_gen.agreement.bootstrap import bootstrap_agreement
 from def_gen.agreement.metrics import (
     calculate_cohen_kappa,
@@ -341,3 +342,13 @@ def test_bootstrap_counts_skipped_resamples_per_key() -> None:
     assert out["mean"]["num_skipped"] == 0
     assert 140 <= out["variable"]["num_skipped"] <= 260
     assert out["variable"]["ci95"] == (0.5, 0.5)
+
+
+def test_rater_metric_lists_the_implemented_metrics() -> None:
+    assert {m.value for m in RaterMetric} == {
+        "cohen_kappa",
+        "fleiss_kappa",
+        "krippendorff_alpha",
+        "percent_agreement",
+        "gwet_ac1",
+    }
