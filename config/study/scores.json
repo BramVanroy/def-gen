@@ -1,0 +1,270 @@
+{
+  "from_hub_id": "outputs/study/head-to-head-input",
+  "from_hub_split": "eval",
+  "num_samples": 300,
+  "hub_id": null,
+  "root_output_dir": "outputs/study/scores",
+  "steps": [
+    {
+      "name": "judge-qwen38-on-gemma4-26b-a4b",
+      "task": "judge",
+      "model_name": "Qwen/Qwen3.8-27B-FP8",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/judge",
+      "definition_column": "definitie-gemma4-26b-a4b",
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_gemma4-26b-a4b_judge_qwen38",
+        "betekenis": "betekenis_gemma4-26b-a4b_judge_qwen38",
+        "gebruik": "gebruik_gemma4-26b-a4b_judge_qwen38",
+        "structuur": "structuur_gemma4-26b-a4b_judge_qwen38",
+        "substitueerbaarheid": "substitueerbaarheid_gemma4-26b-a4b_judge_qwen38",
+        "correctheid": "correctheid_gemma4-26b-a4b_judge_qwen38"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "repetition_penalty": 1.0,
+        "max_completion_tokens": 2048,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "judge-qwen38-on-qwen36-35b-a3b",
+      "task": "judge",
+      "model_name": "Qwen/Qwen3.8-27B-FP8",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/judge",
+      "definition_column": "definitie-qwen36-35b-a3b",
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_qwen36-35b-a3b_judge_qwen38",
+        "betekenis": "betekenis_qwen36-35b-a3b_judge_qwen38",
+        "gebruik": "gebruik_qwen36-35b-a3b_judge_qwen38",
+        "structuur": "structuur_qwen36-35b-a3b_judge_qwen38",
+        "substitueerbaarheid": "substitueerbaarheid_qwen36-35b-a3b_judge_qwen38",
+        "correctheid": "correctheid_qwen36-35b-a3b_judge_qwen38"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "repetition_penalty": 1.0,
+        "max_completion_tokens": 2048,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "judge-qwen38-on-anw",
+      "task": "judge",
+      "model_name": "Qwen/Qwen3.8-27B-FP8",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/judge",
+      "definition_column": "originele-definitie",
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_anw_judge_qwen38",
+        "betekenis": "betekenis_anw_judge_qwen38",
+        "gebruik": "gebruik_anw_judge_qwen38",
+        "structuur": "structuur_anw_judge_qwen38",
+        "substitueerbaarheid": "substitueerbaarheid_anw_judge_qwen38",
+        "correctheid": "correctheid_anw_judge_qwen38"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "repetition_penalty": 1.0,
+        "max_completion_tokens": 2048,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "judge-gemma4-on-gemma4-26b-a4b",
+      "task": "judge",
+      "model_name": "google/gemma-4-31B-it-qat-w4a16-ct",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/judge",
+      "definition_column": "definitie-gemma4-26b-a4b",
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_gemma4-26b-a4b_judge_gemma4",
+        "betekenis": "betekenis_gemma4-26b-a4b_judge_gemma4",
+        "gebruik": "gebruik_gemma4-26b-a4b_judge_gemma4",
+        "structuur": "structuur_gemma4-26b-a4b_judge_gemma4",
+        "substitueerbaarheid": "substitueerbaarheid_gemma4-26b-a4b_judge_gemma4",
+        "correctheid": "correctheid_gemma4-26b-a4b_judge_gemma4"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "max_completion_tokens": 2048,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "judge-gemma4-on-qwen36-35b-a3b",
+      "task": "judge",
+      "model_name": "google/gemma-4-31B-it-qat-w4a16-ct",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/judge",
+      "definition_column": "definitie-qwen36-35b-a3b",
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_qwen36-35b-a3b_judge_gemma4",
+        "betekenis": "betekenis_qwen36-35b-a3b_judge_gemma4",
+        "gebruik": "gebruik_qwen36-35b-a3b_judge_gemma4",
+        "structuur": "structuur_qwen36-35b-a3b_judge_gemma4",
+        "substitueerbaarheid": "substitueerbaarheid_qwen36-35b-a3b_judge_gemma4",
+        "correctheid": "correctheid_qwen36-35b-a3b_judge_gemma4"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "max_completion_tokens": 2048,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "judge-gemma4-on-anw",
+      "task": "judge",
+      "model_name": "google/gemma-4-31B-it-qat-w4a16-ct",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/judge",
+      "definition_column": "originele-definitie",
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_anw_judge_gemma4",
+        "betekenis": "betekenis_anw_judge_gemma4",
+        "gebruik": "gebruik_anw_judge_gemma4",
+        "structuur": "structuur_anw_judge_gemma4",
+        "substitueerbaarheid": "substitueerbaarheid_anw_judge_gemma4",
+        "correctheid": "correctheid_anw_judge_gemma4"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192,
+        "language_model_only": true
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 64,
+        "max_completion_tokens": 2048,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    {
+      "name": "judge-gptoss-on-gemma4-26b-a4b",
+      "task": "judge",
+      "model_name": "openai/gpt-oss-20b",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/judge",
+      "definition_column": "definitie-gemma4-26b-a4b",
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_gemma4-26b-a4b_judge_gptoss",
+        "betekenis": "betekenis_gemma4-26b-a4b_judge_gptoss",
+        "gebruik": "gebruik_gemma4-26b-a4b_judge_gptoss",
+        "structuur": "structuur_gemma4-26b-a4b_judge_gptoss",
+        "substitueerbaarheid": "substitueerbaarheid_gemma4-26b-a4b_judge_gptoss",
+        "correctheid": "correctheid_gemma4-26b-a4b_judge_gptoss"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "max_completion_tokens": 2048,
+        "chat_template_kwargs": {
+          "reasoning_effort": "low"
+        }
+      }
+    },
+    {
+      "name": "judge-gptoss-on-qwen36-35b-a3b",
+      "task": "judge",
+      "model_name": "openai/gpt-oss-20b",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/judge",
+      "definition_column": "definitie-qwen36-35b-a3b",
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_qwen36-35b-a3b_judge_gptoss",
+        "betekenis": "betekenis_qwen36-35b-a3b_judge_gptoss",
+        "gebruik": "gebruik_qwen36-35b-a3b_judge_gptoss",
+        "structuur": "structuur_qwen36-35b-a3b_judge_gptoss",
+        "substitueerbaarheid": "substitueerbaarheid_qwen36-35b-a3b_judge_gptoss",
+        "correctheid": "correctheid_qwen36-35b-a3b_judge_gptoss"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "max_completion_tokens": 2048,
+        "chat_template_kwargs": {
+          "reasoning_effort": "low"
+        }
+      }
+    },
+    {
+      "name": "judge-gptoss-on-anw",
+      "task": "judge",
+      "model_name": "openai/gpt-oss-20b",
+      "provider": "vllm-offline",
+      "file_directory": "instructions/judge",
+      "definition_column": "originele-definitie",
+      "post_field_renamer": {
+        "begrijpelijkheid": "begrijpelijkheid_anw_judge_gptoss",
+        "betekenis": "betekenis_anw_judge_gptoss",
+        "gebruik": "gebruik_anw_judge_gptoss",
+        "structuur": "structuur_anw_judge_gptoss",
+        "substitueerbaarheid": "substitueerbaarheid_anw_judge_gptoss",
+        "correctheid": "correctheid_anw_judge_gptoss"
+      },
+      "client_init_kwargs": {
+        "max_model_len": 8192
+      },
+      "client_run_kwargs": {
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "max_completion_tokens": 2048,
+        "chat_template_kwargs": {
+          "reasoning_effort": "low"
+        }
+      }
+    }
+  ]
+}
