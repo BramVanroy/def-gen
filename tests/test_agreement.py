@@ -6,6 +6,7 @@ from def_gen.agreement.bootstrap import bootstrap_agreement
 from def_gen.agreement.metrics import (
     calculate_cohen_kappa,
     calculate_fleiss_kappa,
+    calculate_gwet_ac1,
     calculate_krippendorff_alpha,
     calculate_percent_agreement,
     calculate_preference_rates,
@@ -156,6 +157,37 @@ def test_krippendorff_alpha_rejects_labels_outside_order() -> None:
         calculate_krippendorff_alpha(
             _small_df(), ["r1", "r2"], "ordinal", category_order=["a"]
         )
+
+
+def test_gwet_ac1_two_raters_matches_hand_computed_value() -> None:
+    # pa = 0.75, pi = (5/8, 3/8), pe = 2 * (15/64) / 1 = 15/32
+    # AC1 = (3/4 - 15/32) / (17/32) = 9/17
+    assert calculate_gwet_ac1(_small_df(), ["r1", "r2"]) == (
+        pytest.approx(9 / 17)
+    )
+
+
+def test_gwet_ac1_three_raters_matches_hand_computed_value() -> None:
+    # items: aaa, aab -> pa = (1 + 1/3) / 2 = 2/3, pi = (5/6, 1/6)
+    # pe = 2 * (5/36) = 5/18 -> AC1 = (2/3 - 5/18) / (13/18) = 7/13
+    df = pd.DataFrame({"r1": ["a", "a"], "r2": ["a", "a"], "r3": ["a", "b"]})
+
+    assert calculate_gwet_ac1(df, ["r1", "r2", "r3"]) == pytest.approx(7 / 13)
+
+
+def test_gwet_ac1_drops_rows_with_missing_values() -> None:
+    df = pd.concat(
+        [_small_df(), pd.DataFrame({"r1": [None, "b"], "r2": ["a", None]})],
+        ignore_index=True,
+    )
+
+    assert calculate_gwet_ac1(df, ["r1", "r2"]) == pytest.approx(9 / 17)
+
+
+def test_gwet_ac1_single_category_is_nan() -> None:
+    df = pd.DataFrame({"r1": ["a", "a"], "r2": ["a", "a"]})
+
+    assert np.isnan(calculate_gwet_ac1(df, ["r1", "r2"]))
 
 
 def test_percent_agreement_matches_hand_computed_value() -> None:

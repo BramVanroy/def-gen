@@ -138,6 +138,46 @@ def calculate_krippendorff_alpha(
     )
 
 
+def calculate_gwet_ac1(df: pd.DataFrame, columns: Sequence[str]) -> float:
+    """Calculate Gwet's AC1 for nominal data with two or more raters.
+
+    AC1 is (pa - pe) / (1 - pe). Here pa is the mean over items of the share of
+    agreeing rater pairs, and pe = sum_k pi_k * (1 - pi_k) / (q - 1) with pi_k
+    the overall share of ratings in category k and q the number of observed
+    categories. It is less sensitive than kappa to skewed label distributions.
+    Rows with a missing value in any column are dropped.
+
+    Args:
+        df: DataFrame containing the annotations to compare.
+        columns: Column names, one per rater.
+
+    Returns:
+        float: AC1 in [-1, 1], or NaN if no row is complete or only one
+            category occurs.
+
+    Examples:
+        >>> df = pd.DataFrame(
+        ...     {"r1": ["a", "a", "b", "a"], "r2": ["a", "a", "b", "b"]}
+        ... )
+        >>> round(calculate_gwet_ac1(df, ["r1", "r2"]), 4)
+        0.5294
+    """
+    data = df[list(columns)].dropna()
+    num_raters = len(columns)
+    if data.empty or data.stack().nunique() < 2:
+        return float("nan")
+
+    counts = pd.crosstab(
+        data.index.repeat(num_raters), data.stack().to_numpy()
+    )
+    pa = (counts * (counts - 1)).sum(axis=1).mean() / (
+        num_raters * (num_raters - 1)
+    )
+    pi = counts.sum(axis=0) / counts.to_numpy().sum()
+    pe = float((pi * (1 - pi)).sum() / (len(pi) - 1))
+    return float((pa - pe) / (1 - pe))
+
+
 def calculate_preference_rates(
     df: pd.DataFrame, columns: Iterable[str]
 ) -> dict:
