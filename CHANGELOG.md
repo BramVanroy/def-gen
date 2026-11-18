@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipelines that consist only of judge steps.
 - `from_hub_id` accepts a local `save_to_disk` directory.
 - `scripts/make_item_split.py` writes a seeded dev/eval split.
-- Study configs in `config/study/` (two writers, ANW judges, head-to-head ranking, a prepared OpenAI writer).
+- Study configs in `config/study/`: two writers (1,000 items, ranker steps against ANW), head-to-head ranking, `scores.json` (three judges on three systems, 300 items) and a prepared OpenAI writer.
 - `allow_paid_api` (default false). Steps with the provider `openai` or `anthropic` are refused without it.
 - Per-step `attrition.json` and `failed_samples.jsonl`.
 - `pipeline.json` has `run_metadata` (git commit, package versions, UTC timestamp).

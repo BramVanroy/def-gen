@@ -86,17 +86,17 @@ A `definer` step has to come first and only one is allowed. A `revisor` needs
 an earlier `feedback` step. A pipeline of only judge steps, or of ranker steps
 with `candidate_columns`, needs no definer.
 
-One step of `config/study/writer-gemma4-26b-a4b.json`, shortened:
+One step of `config/study/scores.json`, shortened:
 
 ```json
 {
-  "name": "judge-qwen38",
+  "name": "judge-qwen38-on-anw",
   "task": "judge",
   "model_name": "Qwen/Qwen3.8-27B-FP8",
   "provider": "vllm-offline",
   "file_directory": "instructions/judge",
-  "definition_column": "definitie-v1",
-  "post_field_renamer": {"correctheid": "correctheid_judge_qwen38"},
+  "definition_column": "originele-definitie",
+  "post_field_renamer": {"correctheid": "correctheid_anw_judge_qwen38"},
   "client_run_kwargs": {"temperature": 0.7, "max_completion_tokens": 2048}
 }
 ```
@@ -172,30 +172,47 @@ Columns that start with the step number and name (for example
 
 ## Running the study
 
-The `config/study/` files read the frozen `eval` split and set `hub_id` to
-null, so nothing is pushed. The models run through offline vLLM and need a GPU.
-Steps 1 and 2 can run in any order.
+Design: pairwise comparisons use 1,000 items. Per-criterion 1-5 scores use
+the first 300 of those items. The `eval` split is in random order, so the
+first rows are a random subset. The `config/study/` files read it, set
+`num_samples` accordingly and set `hub_id` to null, so nothing is pushed. The
+models run through offline vLLM and need a GPU.
 
 ```bash
-# 1. Writers (each run also has the judge and ranker steps against ANW)
+# 1. Writers (1,000 items; each run has a definer and ranker steps against ANW)
 uv run python scripts/generate_definitions.py config/study/writer-gemma4-26b-a4b.json
 uv run python scripts/generate_definitions.py config/study/writer-qwen36-35b-a3b.json
 
-# 2. The ANW definitions scored by the same judges
-uv run python scripts/generate_definitions.py config/study/anw-judges.json
-
-# 3. Writers against each other
+# 2. Merge the definitions of the writers
 uv run python scripts/merge_writer_outputs.py \
     outputs/study/writer-gemma4-26b-a4b outputs/study/writer-qwen36-35b-a3b \
     --output_dir outputs/study/head-to-head-input
+
+# 3. Writers against each other (1,000 items) and scores (300 items).
+#    The two runs are independent.
 uv run python scripts/generate_definitions.py config/study/head-to-head.json
+uv run python scripts/generate_definitions.py config/study/scores.json
 
 # 4. Analysis
 uv run python scripts/analyze.py \
     outputs/study/writer-gemma4-26b-a4b outputs/study/writer-qwen36-35b-a3b \
-    outputs/study/anw-judges outputs/study/head-to-head \
+    outputs/study/head-to-head outputs/study/scores \
     --output_dir outputs/study/analysis
 ```
+
+The scores run has three judge steps per judge model, one for each of the
+three systems: the definitions of both writers and the ANW definition
+(`definition_column` is `definitie-<writer>` or `originele-definitie`). Step
+names and output fields name both judge and judged system, for example the
+step `judge-qwen38-on-anw` and the field `begrijpelijkheid_anw_judge_qwen38`.
+The analysis maps `definitie-<writer>` to that writer and
+`originele-definitie` to "anw".
+
+Primary outcome: per writer, the win rate against ANW. Each item is ranked in
+two presentation orders. It counts as a win or a loss only if both orders
+agree, and as a tie otherwise (as implemented in `def_gen.analysis`). The win
+rate of each single order and the inconsistency rate (items where the orders
+disagree) are reported next to it.
 
 `merge_writer_outputs.py` keeps the items that all writers have and adds one
 `definitie-<writer>` column per writer. `analyze.py` writes `scores.csv` and
@@ -214,7 +231,7 @@ directories and starts over.
 
 Steps with the provider `openai` or `anthropic` are refused before any client
 is created unless the config sets `"allow_paid_api": true`.
-`config/study/writer-openai.json` is prepared for a GPT writer and is refused
+`config/study/writer-openai.json` is prepared for a GPT writer (1,000 items) and is refused
 as committed (`"allow_paid_api": false`). Install the matching extra
 (`uv sync --extra openai`) before enabling it.
 
@@ -223,9 +240,11 @@ as committed (`"allow_paid_api": false`). Install the matching extra
 Study configs in `config/study/`:
 
 - `writer-gemma4-26b-a4b.json` and `writer-qwen36-35b-a3b.json`: one writer
-  each, with three judges and ranker steps against ANW.
-- `anw-judges.json`: the three judges on the ANW definitions.
-- `head-to-head.json`: rankers on the definitions of two writers.
+  each, with 1,000 items and ranker steps against ANW (two presentation
+  orders per judge).
+- `head-to-head.json`: rankers on the definitions of the two writers.
+- `scores.json`: three judges with 1-5 scores for each of the three systems on
+  300 items of the merged dataset.
 - `writer-openai.json`: prepared, refused as committed.
 
 Older examples in `config/`:
