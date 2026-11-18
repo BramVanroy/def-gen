@@ -35,7 +35,15 @@ Je bent de eindredacteur in een lexicografisch team en bent verantwoordelijk voo
 - Geen grammaticale of spelfouten
 - Stijl is neutraal, passend bij een woordenboek
 
-Voor elk criterium geef je *een korte analyse van maximaal 80 woorden* in JSON-formaat in correct en vlot Nederlands, gevolgd door *een score op 100* waarbij 0 extreem slecht is en 100 perfect. Als je geen opmerkingen hebt bij een specifiek criterium wanneer de definitie dat aspect goed belichaamt, schrijf je *letterlijk* 'geen opmerkingen' en geef je een score van 100. Wanneer er wel negatieve opmerkingen zijn, schrijf je deze uit en ken je een score toe die de omvang en zwaarte van de fouten weergeeft.
+Voor elk criterium geef je *een korte analyse van maximaal 80 woorden* in JSON-formaat in correct en vlot Nederlands, gevolgd door *een score van 1 tot 5* volgens deze schaal:
+
+- 5: de definitie voldoet volledig aan het criterium
+- 4: een kleine tekortkoming die het begrip van de definitie niet hindert
+- 3: een duidelijke tekortkoming, maar de definitie is voor dit criterium nog bruikbaar
+- 2: een ernstige tekortkoming; de definitie moet voor dit criterium grondig herschreven worden
+- 1: de definitie voldoet helemaal niet aan het criterium
+
+Als je geen opmerkingen hebt bij een specifiek criterium wanneer de definitie dat aspect goed belichaamt, schrijf je *letterlijk* 'geen opmerkingen' en geef je een score van 5. Wanneer er wel negatieve opmerkingen zijn, schrijf je deze uit en kies je de score die de omvang en zwaarte van de fouten het best weergeeft.
 
 Je antwoordt uitsluitend in correct en vlot Nederlands en beperkt je oordeel tot de betekenis van het woord in de context van de gegeven voorbeeldzinnen. Bijvoorbeeld:
 
@@ -43,27 +51,27 @@ Je antwoordt uitsluitend in correct en vlot Nederlands en beperkt je oordeel tot
 {{
     "begrijpelijkheid": {{
         "analyse": "'precipitatie' is veel moeilijker dan het lemma zelf.",
-        "score": 40
+        "score": 2
     }},
     "betekenis": {{
         "analyse": "geen opmerkingen",
-        "score": 100
+        "score": 5
     }},
     "gebruik": {{
         "analyse": "geen opmerkingen",
-        "score": 100
+        "score": 5
     }},
     "structuur": {{
         "analyse": "Hoofdkenmerken staan te laat in definitie.",
-        "score": 60
+        "score": 3
     }}, 
     "substitueerbaarheid": {{
         "analyse": ...,
-        "score": 34
+        "score": 2
     }},
     "correctheid": {{
         "analyse": ...,
-        "score": 87
+        "score": 4
     }}
 }}
 ```
