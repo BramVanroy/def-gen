@@ -17,3 +17,8 @@ updates:
       # PRs would conflict with each other after the first merge.
       uv:
         patterns: ["*"]
+    ignore:
+      # vLLM (through numba and mistral-common) caps numpy below 2.4 on
+      # Python 3.12. Remove this once the vllm extra allows a newer numpy.
+      - dependency-name: numpy
+        versions: [">=2.4"]

@@ -1,3 +1,6 @@
+import json
+import random
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
@@ -5,7 +8,6 @@ from typing import ClassVar
 import llm_annotator
 import numpy as np
 import pytest
-import torch
 from pydantic import ValidationError
 
 from def_gen import definition_generation as dg
@@ -86,13 +88,38 @@ def test_pipeline_step_config_client_kwargs_accepted() -> None:
     assert out.client_run_kwargs["max_completion_tokens"] == 12
 
 
-def test_set_seed_is_reproducible() -> None:
+def test_set_seed_seeds_random_and_numpy() -> None:
     dg.set_seed(123)
-    first = (np.random.rand(), torch.rand(1).item())
+    first = (random.random(), np.random.rand())
     dg.set_seed(123)
-    second = (np.random.rand(), torch.rand(1).item())
 
-    assert first == second
+    assert (random.random(), np.random.rand()) == first
+
+
+@pytest.mark.parametrize("cuda_available", [True, False])
+def test_set_seed_seeds_torch_when_installed(
+    monkeypatch: pytest.MonkeyPatch, cuda_available: bool
+) -> None:
+    calls: list[tuple[str, int]] = []
+    fake_torch = SimpleNamespace(
+        manual_seed=lambda seed: calls.append(("cpu", seed)),
+        cuda=SimpleNamespace(
+            is_available=lambda: cuda_available,
+            manual_seed_all=lambda seed: calls.append(("cuda", seed)),
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    dg.set_seed(7)
+
+    expected = [("cpu", 7), ("cuda", 7)] if cuda_available else [("cpu", 7)]
+    assert calls == expected
+
+
+def test_set_seed_without_torch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "torch", None)
+
+    dg.set_seed(7)
 
 
 @pytest.mark.parametrize(
@@ -416,3 +443,385 @@ def test_run_generation_pushes_formatted_hub_id(
     dg.run_generation(config)
 
     assert _RunDataset.pushed == ("owner/ds-1", True)
+
+
+def test_concat_feedback_numbers_reviewers_and_skips_no_revision() -> None:
+    sample = {
+        "revisie-nodig_a": False,
+        "gebruik_a": "niet nodig",
+        "revisie-nodig_b": True,
+        "gebruik_b": "te vaag",
+        "structuur_b": None,
+        "lemmavorm": "woord",
+    }
+    feedback_cols = {
+        "fb-a": ["revisie-nodig_a", "gebruik_a"],
+        "fb-b": ["revisie-nodig_b", "gebruik_b", "structuur_b"],
+    }
+
+    out = dg.concat_feedback(sample, feedback_cols)
+
+    assert out == {"feedback": "*Feedback van reviewer 2*\n- gebruik: te vaag"}
+
+
+def test_concat_feedback_is_empty_when_no_reviewer_needs_revision() -> None:
+    sample = {"revisie-nodig_a": False, "lemmavorm": "woord"}
+
+    out = dg.concat_feedback(sample, {"fb-a": ["revisie-nodig_a"]})
+
+    assert out == {"feedback": ""}
+
+
+def test_prepare_examples_truncates_context_with_markers() -> None:
+    out = dg.prepare_examples(
+        ["een twee drie woord vijf zes zeven"],
+        word="woord",
+        num_examples=3,
+        context_words=1,
+    )
+
+    assert out == {"voorbeelden": "- [...] drie woord vijf [...]"}
+
+
+def test_prepare_examples_limits_number_of_examples() -> None:
+    out = dg.prepare_examples(
+        ["woord a", "woord b", "woord c"], word="woord", num_examples=2
+    )
+
+    assert len(out["voorbeelden"].splitlines()) == 2
+
+
+def test_shuffle_definitions_two_candidates() -> None:
+    sample = {"definitie-v1": "v1", "originele-definitie": "orig"}
+
+    out = dg.shuffle_definitions(sample)
+
+    assert sorted(out["shuffle-order"]) == [
+        "definitie-v1",
+        "originele-definitie",
+    ]
+    assert "random-definitie-3" not in out
+    mapping = {"definitie-v1": "v1", "originele-definitie": "orig"}
+    assert out["random-definitie-1"] == mapping[out["shuffle-order"][0]]
+    assert out["random-definitie-2"] == mapping[out["shuffle-order"][1]]
+
+
+def test_shuffle_definitions_three_candidates() -> None:
+    sample = {
+        "definitie-v1": "v1",
+        "definitie-v2": "v2",
+        "originele-definitie": "orig",
+    }
+    mapping = {
+        "definitie-v1": "v1",
+        "definitie-v2": "v2",
+        "originele-definitie": "orig",
+    }
+
+    out = dg.shuffle_definitions(sample)
+
+    assert sorted(out["shuffle-order"]) == sorted(mapping)
+    for i, name in enumerate(out["shuffle-order"], 1):
+        assert out[f"random-definitie-{i}"] == mapping[name]
+
+
+def test_check_rank_validity_ignores_missing_values() -> None:
+    sample = {"c1": "Definitie 1", "c2": None, "c3": "Definitie 3"}
+    unknown = {"c1": "Definitie 1", "c2": "Definitie 9", "c3": "Definitie 3"}
+
+    assert not dg.check_rank_validity(sample, ["c1", "c2", "c3"])
+    assert not dg.check_rank_validity(unknown, ["c1", "c2", "c3"])
+
+
+def _anw_row(lemma: str, **overrides) -> dict:
+    row = {
+        "lemmavorm": lemma,
+        "woordsoort": "substantief",
+        "definitie": "een lange definitie met genoeg woorden erin",
+        "voorbeelden": [f"een {lemma} staat hier", f"daar ligt de {lemma}"],
+        "artikel_meerdere_betekenissen": False,
+        "mini_definitie": "mini",
+        "artikel_id": 1,
+        "betekenis_id": 1,
+        "artikel_laatst_bewerkt": 2020,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_init_data_filters_and_prepares_rows(tmp_path: Path) -> None:
+    rows = [
+        _anw_row("boom"),
+        _anw_row("huis"),
+        _anw_row("lopen", woordsoort="werkwoord"),
+        _anw_row("kort", definitie="te kort"),
+        _anw_row("Utrecht"),
+        _anw_row("poly", artikel_meerdere_betekenissen=True),
+        _anw_row("ook", definitie="een lange definitie ook: nog iets erbij"),
+        _anw_row("weinig", voorbeelden=["alleen een weinig", "geen match"]),
+    ]
+    path = tmp_path / "data.jsonl"
+    path.write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
+    )
+
+    ds = dg.init_data(
+        num_samples=None, min_num_examples=2, num_proc=None, data_path=path
+    )
+
+    assert sorted(ds["lemmavorm"]) == ["boom", "huis"]
+    assert "originele-definitie" in ds.column_names
+    assert "definitie" not in ds.column_names
+    assert "woordsoort" not in ds.column_names
+    assert all(isinstance(v, str) for v in ds["artikel_laatst_bewerkt"])
+    for lemma, voorbeelden in zip(
+        ds["lemmavorm"], ds["voorbeelden"], strict=True
+    ):
+        assert len(voorbeelden.splitlines()) == 2
+        assert lemma in voorbeelden
+
+
+def test_init_data_limits_num_samples(tmp_path: Path) -> None:
+    path = tmp_path / "data.jsonl"
+    rows = [_anw_row(w) for w in ["boom", "huis", "tafel"]]
+    path.write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
+    )
+
+    ds = dg.init_data(num_samples=2, min_num_examples=2, data_path=path)
+
+    assert len(ds) == 2
+
+
+class _ScriptedAnnotator(_FakeAnnotator):
+    """Annotator that adds fixed columns and marks rows invalid by index."""
+
+    new_columns: ClassVar[dict] = {}
+    invalid_rows: ClassVar[set[int]] = set()
+    num_calls = 0
+
+    def annotate_dataset(self, **kwargs):
+        type(self).num_calls += 1
+        task_prefix = kwargs["task_prefix"]
+        rows = []
+        for i, row in enumerate(kwargs["dataset"].rows):
+            payload = dict(row)
+            payload.update(type(self).new_columns)
+            valid = i not in type(self).invalid_rows
+            payload[f"{task_prefix}valid_fields"] = valid
+            payload[f"{task_prefix}finish_reason"] = (
+                "stop" if valid else "length"
+            )
+            rows.append(payload)
+        return _RunDataset(rows)
+
+
+@pytest.fixture
+def scripted(monkeypatch: pytest.MonkeyPatch) -> type[_ScriptedAnnotator]:
+    _ScriptedAnnotator.new_columns = {}
+    _ScriptedAnnotator.invalid_rows = set()
+    _ScriptedAnnotator.num_calls = 0
+    monkeypatch.setattr(dg, "set_seed", lambda seed: None)
+    monkeypatch.setattr(dg, "Annotator", _ScriptedAnnotator)
+    monkeypatch.setattr(
+        dg,
+        "_create_client_and_runtime_options",
+        lambda step: (object(), object()),
+    )
+    monkeypatch.setattr(
+        dg,
+        "concatenate_datasets",
+        lambda parts: _RunDataset([r for p in parts for r in p.rows]),
+    )
+    return _ScriptedAnnotator
+
+
+def _patch_inputs(
+    monkeypatch: pytest.MonkeyPatch, ds: _RunDataset, steps: list
+) -> None:
+    for idx, step in enumerate(steps):
+        step.idx = idx
+    monkeypatch.setattr(dg, "init_data", lambda **kwargs: ds)
+    monkeypatch.setattr(
+        dg, "build_pipeline", lambda config: _FakePipeline(steps)
+    )
+
+
+def test_run_generation_writes_invalid_samples_to_failed_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    scripted.invalid_rows = {1}
+    ds = _RunDataset([{"id": 0}, {"id": 1}, {"id": 2}])
+    _patch_inputs(
+        monkeypatch, ds, [_make_step(name="d", post_field_renamer={})]
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
+    )
+
+    lines = (tmp_path / "failed_samples.jsonl").read_text().splitlines()
+    failed = [json.loads(line) for line in lines]
+    assert [f["id"] for f in failed] == [1]
+    assert failed[0]["1-d_finish_reason"] == "length"
+    assert failed[0]["invalid_reason"] == (
+        "1-d: Did not produce valid_fields=True"
+    )
+
+
+def test_run_generation_raises_when_all_samples_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    scripted.invalid_rows = {0}
+    _patch_inputs(monkeypatch, _RunDataset([{"id": 0}]), [_make_step()])
+
+    with pytest.raises(ValueError, match="All samples were filtered out"):
+        dg.run_generation(
+            dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
+        )
+
+
+def test_run_generation_skips_step_with_existing_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    done = tmp_path / "1-definer-d" / "done"
+    done.mkdir(parents=True)
+    (done / ".saved").write_text("1", encoding="utf-8")
+    _patch_inputs(
+        monkeypatch,
+        _RunDataset([{"id": 0}]),
+        [_make_step(name="d", post_field_renamer={})],
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
+    )
+
+    assert scripted.num_calls == 0
+    assert (tmp_path / "full_process_done" / ".saved").exists()
+
+
+def test_run_generation_overwrite_discards_existing_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    done = tmp_path / "1-definer-d" / "done"
+    done.mkdir(parents=True)
+    (done / "stale.txt").write_text("old", encoding="utf-8")
+    _patch_inputs(
+        monkeypatch,
+        _RunDataset([{"id": 0}]),
+        [_make_step(name="d", post_field_renamer={})],
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(
+            root_output_dir=tmp_path, hub_id=None, overwrite=True
+        )
+    )
+
+    assert scripted.num_calls == 1
+    assert not (done / "stale.txt").exists()
+
+
+def test_run_generation_resumed_step_merges_back_no_revision_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    ds = _RunDataset(
+        [
+            {"id": 0, "revisie-nodig_a": True, "feedback": "fix this"},
+            {"id": 1, "revisie-nodig_a": False, "feedback": ""},
+        ]
+    )
+    steps = [
+        _make_step(name="d", post_field_renamer={}),
+        _make_step(name="r", task="revisor", post_field_renamer={}),
+    ]
+    _patch_inputs(monkeypatch, ds, steps)
+    done = tmp_path / "2-revisor-r" / "done"
+    done.mkdir(parents=True)
+    (done / ".saved").write_text("1", encoding="utf-8")
+    pushed: list[_RunDataset] = []
+    monkeypatch.setattr(
+        _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id="o/x")
+    )
+
+    assert scripted.num_calls == 1
+    assert [r["id"] for r in pushed[0].rows] == [0, 1]
+
+
+def test_run_generation_splits_judge_scores(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    scripted.new_columns = {"raw": {"analyse": "goed", "score": 4}}
+    pushed: list[_RunDataset] = []
+    monkeypatch.setattr(
+        _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
+    )
+    steps = [
+        _make_step(name="d", post_field_renamer={}),
+        _make_step(
+            name="j",
+            task="judge",
+            post_field_renamer={"raw": "begrijpelijkheid"},
+        ),
+    ]
+    _patch_inputs(monkeypatch, _RunDataset([{"id": 0}]), steps)
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id="o/x")
+    )
+
+    row = pushed[0].rows[0]
+    assert row["analyse_begrijpelijkheid"] == "goed"
+    assert row["score_begrijpelijkheid"] == 4
+    assert "begrijpelijkheid" not in row
+
+
+def test_run_generation_concats_feedback_after_last_feedback_step(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    scripted.new_columns = {"raw_nodig": True, "raw_gebruik": "te vaag"}
+    pushed: list[_RunDataset] = []
+    monkeypatch.setattr(
+        _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
+    )
+    steps = [
+        _make_step(name="d", post_field_renamer={}),
+        _make_step(
+            name="f",
+            task="feedback",
+            post_field_renamer={
+                "raw_nodig": "revisie-nodig_f",
+                "raw_gebruik": "gebruik_f",
+            },
+        ),
+    ]
+    _patch_inputs(
+        monkeypatch, _RunDataset([{"id": 0, "lemmavorm": "woord"}]), steps
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id="o/x")
+    )
+
+    assert pushed[0].rows[0]["feedback"] == (
+        "*Feedback van reviewer 1*\n- gebruik: te vaag"
+    )
