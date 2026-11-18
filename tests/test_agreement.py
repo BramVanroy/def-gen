@@ -291,7 +291,7 @@ def test_bootstrap_ci_keys_restricts_tracked_statistics() -> None:
     assert "mean" not in out
 
 
-def test_bootstrap_rejects_negative_count_missing_key_and_nan() -> None:
+def test_bootstrap_rejects_negative_count_and_missing_key() -> None:
     df = pd.DataFrame({"score": [1.0, 2.0, 3.0]})
 
     with pytest.raises(ValueError, match="non-negative"):
@@ -300,7 +300,29 @@ def test_bootstrap_rejects_negative_count_missing_key_and_nan() -> None:
         bootstrap_agreement(
             _mean_score, df, num_bootstraps=2, ci_keys=["missing"]
         )
-    with pytest.raises(ValueError, match="NaN"):
-        bootstrap_agreement(
-            lambda d: {"x": float("nan")}, df, num_bootstraps=2
-        )
+
+
+def test_bootstrap_all_nan_statistic_gives_nan_interval() -> None:
+    df = pd.DataFrame({"score": [1.0, 2.0, 3.0]})
+
+    out = bootstrap_agreement(
+        lambda d: {"x": float("nan")}, df, num_bootstraps=4
+    )
+
+    assert out["x"]["num_skipped"] == 4
+    assert np.isnan(out["x"]["ci95"]).all()
+
+
+def test_bootstrap_counts_skipped_resamples_per_key() -> None:
+    df = pd.DataFrame({"score": [0.0, 1.0]})
+
+    def fn(d: pd.DataFrame) -> dict[str, float]:
+        # a resample of 2 rows is constant (mean 0 or 1) with probability 1/2
+        mean = float(d["score"].mean())
+        return {"mean": mean, "variable": mean if mean == 0.5 else np.nan}
+
+    out = bootstrap_agreement(fn, df, num_bootstraps=400, seed=0)
+
+    assert out["mean"]["num_skipped"] == 0
+    assert 140 <= out["variable"]["num_skipped"] <= 260
+    assert out["variable"]["ci95"] == (0.5, 0.5)
