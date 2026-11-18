@@ -26,7 +26,7 @@ from pydantic import (
 )
 
 from def_gen.pipeline import Pipeline, Step
-from def_gen.utils import ROOT, PathCompatibleEncoder
+from def_gen.utils import ROOT, PathCompatibleEncoder, run_metadata
 
 
 JUDGE_FIELDS = [
@@ -665,7 +665,11 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
     with config.root_output_dir.joinpath("pipeline.json").open(
         "w", encoding="utf-8"
     ) as fh:
-        data = {**pipe.to_dict(), **config.to_dict()}
+        data = {
+            **pipe.to_dict(),
+            **config.to_dict(),
+            "run_metadata": run_metadata(),
+        }
         json.dump(data, fh, indent=4, cls=PathCompatibleEncoder)
 
     feedback_cols: dict[str, list[str]] = {}

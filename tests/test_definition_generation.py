@@ -441,7 +441,8 @@ def test_run_generation_smoke(
     )
     dg.run_generation(config)
 
-    assert (tmp_path / "pipeline.json").exists()
+    meta = json.loads((tmp_path / "pipeline.json").read_text())["run_metadata"]
+    assert set(meta) == {"git_commit", "versions", "timestamp_utc"}
     assert (tmp_path / "1-definer-definer-fake" / "done" / ".saved").exists()
     assert (tmp_path / "full_process_done" / ".saved").exists()
     assert _FakeAnnotator.init_calls[0]["batch_size"] == 8
