@@ -4,9 +4,10 @@ from enum import StrEnum
 
 
 class RaterMetric(StrEnum):
-    """Enumeration of rater agreement metrics."""
+    """Enumeration of the implemented rater agreement metrics."""
 
     COHEN_KAPPA = "cohen_kappa"
+    FLEISS_KAPPA = "fleiss_kappa"
     KRIPPENDORFF_ALPHA = "krippendorff_alpha"
-    PEARSON_CORRELATION = "pearson_correlation"
-    SPEARMAN_CORRELATION = "spearman_correlation"
+    PERCENT_AGREEMENT = "percent_agreement"
+    GWET_AC1 = "gwet_ac1"

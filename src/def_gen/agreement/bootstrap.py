@@ -11,7 +11,7 @@ from tqdm import trange
 def bootstrap_agreement(
     agreement_fn: Callable,
     df: pd.DataFrame,
-    num_bootstraps: int = 1000,
+    num_bootstraps: int = 2000,
     seed: int | None = 42,
     ci_keys: Iterable | None = None,
 ) -> dict:
@@ -26,7 +26,11 @@ def bootstrap_agreement(
         ci_keys (Iterable | None): Keys to compute confidence intervals for. If None, all keys from agreement_fn result are used.
 
     Returns:
-        dict: Dictionary with 95% confidence intervals for agreement statistics.
+        dict: For each key, the observed "value", the percentile interval
+            "ci95" and "num_skipped", the number of resamples in which the
+            statistic was NaN and left out of the interval (the interval is
+            (NaN, NaN) if all were). Also holds "num_bootstraps", "num_items"
+            and "bootstrap_seed".
     """
     if num_bootstraps < 0:
         raise ValueError("num_bootstraps must be non-negative.")
@@ -38,6 +42,7 @@ def bootstrap_agreement(
 
     rng = np.random.default_rng(seed)
     boot_results = defaultdict(list)
+    num_skipped = defaultdict(int)
 
     for _ in trange(num_bootstraps, desc="Bootstrap sampling", leave=False):
         resampled = df.sample(frac=1, replace=True, random_state=rng)
@@ -48,19 +53,23 @@ def bootstrap_agreement(
                     f"Key {key} not found in agreement function result."
                 )
             if np.isnan(res[key]):
-                raise ValueError(f"{key} is NaN in bootstrap sample.")
-            boot_results[key].append(res[key])
+                num_skipped[key] += 1
+            else:
+                boot_results[key].append(res[key])
 
     def ci(vals):
+        if not vals:
+            return (float("nan"), float("nan"))
         lo, hi = np.percentile(vals, [2.5, 97.5])
         return (float(lo), float(hi))
 
     agreements = {
         k: {
             "value": initial_res[k],
-            "ci95": ci(v),
+            "ci95": ci(boot_results[k]),
+            "num_skipped": num_skipped[k],
         }
-        for k, v in boot_results.items()
+        for k in ci_keys
     }
 
     agreements = {

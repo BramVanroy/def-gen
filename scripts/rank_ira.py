@@ -1,5 +1,5 @@
 import json
-from collections.abc import Iterable
+from collections.abc import Sequence
 from functools import partial
 
 import pandas as pd
@@ -8,8 +8,9 @@ from datasets import load_from_disk
 from def_gen.agreement.bootstrap import bootstrap_agreement
 from def_gen.agreement.metrics import (
     calculate_cohen_kappa,
-    calculate_fleiss_kappa,
+    calculate_gwet_ac1,
     calculate_krippendorff_alpha,
+    calculate_percent_agreement,
     calculate_preference_rates,
 )
 from def_gen.agreement.utils import confusion_matrix
@@ -18,6 +19,7 @@ from def_gen.agreement.utils import confusion_matrix
 COL_A = "originele-definitie"
 COL_B = "definitie-v1"
 CANON_ORDER = [COL_A, COL_B]
+ORDINAL_ORDER = ["B>A", "A=B", "A>B"]
 COL_LABEL_MAP = {
     COL_A: "A",
     COL_B: "B",
@@ -30,29 +32,36 @@ LABEL_MAP = {
 }
 
 
-def agreement_2raters(df: pd.DataFrame, columns: Iterable[str]) -> dict:
-    """Compute inter-rater agreement statistics for the given dataframe between two raters
+def agreement_2raters(df: pd.DataFrame, columns: Sequence[str]) -> dict:
+    """Compute inter-rater agreement statistics between two raters.
 
     Args:
         df (pd.DataFrame): Dataframe containing rater columns.
-        columns (Iterable[str]): Iterable of column names providing one column per rater.
+        columns (Sequence[str]): Column names, one per rater.
+
     Returns:
-        dict: Dictionary with agreement statistics.
+        dict: Flat mapping from statistic name to value. Preference rates have
+            the key "preference_rate/<column>/<label>".
     """
     if len(columns) != 2:
         raise ValueError(f"Expected 2 columns but {len(columns)} were given.")
 
-    cohen_val = calculate_cohen_kappa(df, columns)
-    fleiss_val = calculate_fleiss_kappa(df, columns)
-    krippendorff_val = calculate_krippendorff_alpha(df, columns)
-    preference_val = calculate_preference_rates(df, columns)
-
-    return {
-        "cohens_kappa": cohen_val,
-        "fleiss_kappa": fleiss_val,
-        "krippendorff_alpha_nominal": krippendorff_val,
-        "preference_rates": preference_val,
+    stats = {
+        "percent_agreement": calculate_percent_agreement(df, columns),
+        "cohens_kappa": calculate_cohen_kappa(df, columns),
+        "krippendorff_alpha_nominal": calculate_krippendorff_alpha(
+            df, columns, "nominal", ORDINAL_ORDER
+        ),
+        "krippendorff_alpha_ordinal": calculate_krippendorff_alpha(
+            df, columns, "ordinal", ORDINAL_ORDER
+        ),
+        "gwet_ac1": calculate_gwet_ac1(df, columns),
     }
+    rates = calculate_preference_rates(df, columns, ORDINAL_ORDER)
+    for col, col_rates in rates.items():
+        for label, rate in col_rates.items():
+            stats[f"preference_rate/{col}/{label}"] = rate
+    return stats
 
 
 def unshuffle_df(
@@ -114,7 +123,7 @@ def unshuffle_df(
 def main(
     dir_dataset: str,
     fout: str | None = None,
-    num_bootstraps: int = 1000,
+    num_bootstraps: int = 2000,
     shuffle_order_col: str = "shuffle-order",
     ranking_prefix: str = "ranking_ranker_",
     num_proc: int = 8,
@@ -148,7 +157,6 @@ def main(
     summary = bootstrap_agreement(
         agreement_fn,
         df,
-        ci_keys=["cohens_kappa", "fleiss_kappa", "krippendorff_alpha_nominal"],
         num_bootstraps=num_bootstraps,
     )
 
@@ -183,7 +191,7 @@ if __name__ == "__main__":
     cparser.add_argument(
         "--num_bootstraps",
         type=int,
-        default=1000,
+        default=2000,
         help="Number of bootstrap samples for confidence intervals.",
     )
     cargs = cparser.parse_args()
