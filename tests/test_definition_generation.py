@@ -1146,3 +1146,42 @@ def test_load_source_dataset_from_hub(
 
     assert len(dg.load_source_dataset("o/hub")) == 1
     assert len(dg.load_source_dataset("o/hub", "test")) == 2
+
+
+STUDY_CONFIGS = sorted(
+    Path(__file__)
+    .resolve()
+    .parents[1]
+    .joinpath("config", "study")
+    .glob("*.json")
+)
+
+
+@pytest.mark.parametrize("path", STUDY_CONFIGS, ids=lambda p: p.name)
+def test_study_configs_build_pipelines(path: Path) -> None:
+    config = dg.GenerateDefinitionsConfig.model_validate(
+        json.loads(path.read_text(encoding="utf-8"))
+    )
+
+    pipe = dg.build_pipeline(config)
+
+    assert len(pipe) > 0
+    for step in pipe:
+        assert step.provider == "vllm-offline"
+        assert step.post_field_renamer
+        if step.schema:
+            assert set(step.post_field_renamer) == set(
+                step.schema["properties"]
+            )
+        options = llm_annotator.VLLMOfflineRuntimeOptions(
+            **step.client_run_kwargs
+        )
+        assert options.chat_template_kwargs
+
+
+def test_study_configs_exist() -> None:
+    assert {p.name for p in STUDY_CONFIGS} == {
+        "anw-judges.json",
+        "writer-gemma4-26b-a4b.json",
+        "writer-qwen36-35b-a3b.json",
+    }
