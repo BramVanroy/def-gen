@@ -430,6 +430,7 @@ def combine_runs(runs: list[AnalysisData]) -> AnalysisData:
             common to all groups.
     """
     scores = pd.concat([r.scores for r in runs], ignore_index=True)
+    scores["score"] = pd.to_numeric(scores["score"])
     pairs = pd.concat([r.pairs for r in runs], ignore_index=True)
     definitions = pd.concat(
         [r.definitions for r in runs], ignore_index=True
