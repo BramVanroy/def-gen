@@ -1,3 +1,9 @@
+"""Run a pipeline of definer, feedback, revisor, judge and ranker steps.
+
+Example:
+    uv run python scripts/generate_definitions.py config/study/anw-judges.json
+"""
+
 import argparse
 import json
 from pathlib import Path

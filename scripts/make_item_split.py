@@ -1,4 +1,8 @@
-"""Split the ANW dataset into a dev and an eval set and save it to disk."""
+"""Split the ANW dataset into a dev and an eval set and save it to disk.
+
+Example:
+    uv run python scripts/make_item_split.py --output_dir data/splits/anw-5ex
+"""
 
 import argparse
 

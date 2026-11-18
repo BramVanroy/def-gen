@@ -1,3 +1,13 @@
+"""Build the filtered ANW dataset with `init_data` and push it to the hub.
+
+Uses `data/anw_lemma_definitions.jsonl`, keeps entries with at least 5 examples
+and pushes a private dataset to the author's namespace. Change the dataset id
+in the script before running it under another account.
+
+Example:
+    uv run python scripts/upload_prepped_data.py
+"""
+
 from def_gen.definition_generation import init_data
 
 

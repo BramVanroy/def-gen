@@ -1,3 +1,13 @@
+"""Extract the lemma definitions from the ANW XML dump.
+
+Writes `anw_lemma_articles.jsonl` and `anw_lemma_definitions.jsonl` into the
+directory of the XML file. `def_gen` reads `data/anw_lemma_definitions.jsonl`,
+so put the XML in `data/`.
+
+Example:
+    uv run python scripts/extract_anw_articles.py data/anw.xml -j 8
+"""
+
 import json
 from pathlib import Path
 from xml.etree.ElementTree import Element
