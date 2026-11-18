@@ -129,17 +129,19 @@ def test_pipeline_rejects_second_definer() -> None:
 
 
 @pytest.mark.parametrize(
-    ("task", "match"),
+    "tasks",
     [
-        ("feedback", "Feedback step"),
-        ("revisor", "Revisor step"),
-        ("judge", "Judge step"),
-        ("ranker", "Ranker step"),
+        [],
+        ["feedback"],
+        ["judge", "definer"],
+        ["ranker", "definer", "judge"],
     ],
 )
-def test_pipeline_requires_preceding_definer(task: str, match: str) -> None:
-    with pytest.raises(ValueError, match=match):
-        Pipeline([_step("a", task)])
+def test_pipeline_must_start_with_definer(tasks: list[str]) -> None:
+    steps = [_step(f"s{i}", task) for i, task in enumerate(tasks)]
+
+    with pytest.raises(ValueError, match="must start with a definer"):
+        Pipeline(steps)
 
 
 def test_pipeline_revisor_requires_feedback() -> None:
@@ -147,9 +149,18 @@ def test_pipeline_revisor_requires_feedback() -> None:
         Pipeline([_step("d", "definer"), _step("r", "revisor")])
 
 
-def test_pipeline_requires_definer() -> None:
-    with pytest.raises(ValueError, match="definer step"):
-        Pipeline([])
+def test_pipeline_marks_last_of_task_for_all_tasks() -> None:
+    tasks = ["definer", "feedback", "feedback", "revisor", "judge", "ranker"]
+    pipe = Pipeline([_step(f"s{i}", task) for i, task in enumerate(tasks)])
+
+    assert [s.last_of_task for s in pipe] == [
+        True,
+        False,
+        True,
+        True,
+        True,
+        True,
+    ]
 
 
 def test_pipeline_contains_task_name_and_step() -> None:
