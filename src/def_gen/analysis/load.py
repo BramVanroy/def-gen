@@ -17,6 +17,8 @@ from typing import Any
 import pandas as pd
 from datasets import load_from_disk
 
+from def_gen.definition_generation import JUDGE_FIELDS
+
 
 ITEM_COLUMN = "betekenis_pid"
 ANW_COLUMN = "originele-definitie"
@@ -377,6 +379,42 @@ def attrition_from_run(
     return pd.DataFrame(rows)
 
 
+def normalize_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fill the step fields that `pipeline.json` may leave out.
+
+    `pipeline.json` can hold the steps as configured instead of the built
+    pipeline steps. Those lack `idx`, and a judge step without an explicit
+    `post_field_renamer` lacks the default renamer of `Step`.
+
+    Args:
+        steps: The steps from `pipeline.json`.
+
+    Returns:
+        Copies of the steps with `idx` (the list position if missing),
+        `post_field_renamer` ({criterion: "<criterion>_<step name>"} for a
+        judge without one), `definition_column` and `order_rotation`.
+
+    Examples:
+        >>> step = {"name": "j", "task": "judge", "model_name": "m"}
+        >>> normalize_steps([step])[0]["post_field_renamer"]["gebruik"]
+        'gebruik_j'
+    """
+    normalized = []
+    for position, step in enumerate(steps):
+        step = {
+            "idx": position,
+            "definition_column": None,
+            "order_rotation": 0,
+            **step,
+        }
+        renamer = step.get("post_field_renamer") or {}
+        if step["task"] == "judge" and not renamer:
+            renamer = {c: f"{c}_{step['name']}" for c in JUDGE_FIELDS}
+        step["post_field_renamer"] = renamer
+        normalized.append(step)
+    return normalized
+
+
 def read_run(run_dir: str | Path) -> AnalysisData:
     """Read one run directory into long tables.
 
@@ -387,9 +425,11 @@ def read_run(run_dir: str | Path) -> AnalysisData:
         The tables of the run, with an empty coverage table.
     """
     run_dir = Path(run_dir)
-    steps = json.loads(
-        run_dir.joinpath("pipeline.json").read_text(encoding="utf-8")
-    )["steps"]
+    steps = normalize_steps(
+        json.loads(
+            run_dir.joinpath("pipeline.json").read_text(encoding="utf-8")
+        )["steps"]
+    )
     df = load_from_disk(run_dir / "full_process_done").to_pandas()
     return AnalysisData(
         scores=scores_from_run(df, steps, run_dir.name),
