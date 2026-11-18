@@ -1,6 +1,6 @@
 Woord: {lemmavorm}
 Voorbeelden:
 {voorbeelden}
-Definitie: {definitie-v1}
+Definitie: {te-beoordelen-definitie}
 
 Jouw evaluatie van de gegeven definitie:

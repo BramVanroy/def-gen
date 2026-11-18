@@ -37,6 +37,7 @@
       "task": "judge",
       "model_name": "Qwen/Qwen3.6-27B-FP8",
       "file_directory": "instructions/judge",
+      "definition_column": "definitie-v1",
       "provider": "vllm-offline",
       "client_init_kwargs": {
         "max_model_len": 6400,

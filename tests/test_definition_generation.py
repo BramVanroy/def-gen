@@ -8,6 +8,7 @@ from typing import ClassVar
 import llm_annotator
 import numpy as np
 import pytest
+from datasets import Dataset
 from pydantic import ValidationError
 
 from def_gen import definition_generation as dg
@@ -28,6 +29,7 @@ def _make_step(**kwargs):
         "schema": None,
         "system_message": None,
         "last_of_task": True,
+        "order_rotation": 0,
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -285,6 +287,9 @@ class _RunDataset:
         return list(self.rows[0].keys()) if self.rows else []
 
     def load_from_disk(self, path):
+        rows_file = Path(path) / "rows.json"
+        if rows_file.exists():
+            return _RunDataset(json.loads(rows_file.read_text("utf-8")))
         return self
 
     def filter(self, fn, input_columns=None, num_proc=None):
@@ -321,6 +326,27 @@ class _RunDataset:
             rows.append(payload)
         return _RunDataset(rows)
 
+    @property
+    def features(self):
+        return self.column_names
+
+    def select_columns(self, columns):
+        return _RunDataset([{c: row[c] for c in columns} for row in self.rows])
+
+    def cast(self, features):
+        return self
+
+    def sort(self, column):
+        return _RunDataset(sorted(self.rows, key=lambda row: row[column]))
+
+    def remove_columns(self, columns):
+        return _RunDataset(
+            [
+                {k: v for k, v in row.items() if k not in columns}
+                for row in self.rows
+            ]
+        )
+
     def to_list(self):
         return [dict(row) for row in self.rows]
 
@@ -328,11 +354,16 @@ class _RunDataset:
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
         path.joinpath(".saved").write_text("1", encoding="utf-8")
+        path.joinpath("rows.json").write_text(
+            json.dumps(self.rows), encoding="utf-8"
+        )
 
     def push_to_hub(self, hub_id, private=True):
         _RunDataset.pushed = (hub_id, private)
 
     def __getitem__(self, key):
+        if isinstance(key, int):
+            return self.rows[key]
         return [row[key] for row in self.rows]
 
     def __len__(self):
@@ -410,7 +441,8 @@ def test_run_generation_smoke(
     )
     dg.run_generation(config)
 
-    assert (tmp_path / "pipeline.json").exists()
+    meta = json.loads((tmp_path / "pipeline.json").read_text())["run_metadata"]
+    assert set(meta) == {"git_commit", "versions", "timestamp_utc"}
     assert (tmp_path / "1-definer-definer-fake" / "done" / ".saved").exists()
     assert (tmp_path / "full_process_done" / ".saved").exists()
     assert _FakeAnnotator.init_calls[0]["batch_size"] == 8
@@ -662,13 +694,44 @@ def test_run_generation_writes_invalid_samples_to_failed_file(
         dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
     )
 
-    lines = (tmp_path / "failed_samples.jsonl").read_text().splitlines()
+    step_dir = tmp_path / "1-definer-d"
+    assert not (tmp_path / "failed_samples.jsonl").exists()
+    lines = (step_dir / "failed_samples.jsonl").read_text().splitlines()
     failed = [json.loads(line) for line in lines]
     assert [f["id"] for f in failed] == [1]
     assert failed[0]["1-d_finish_reason"] == "length"
     assert failed[0]["invalid_reason"] == (
         "1-d: Did not produce valid_fields=True"
     )
+    assert json.loads((step_dir / "attrition.json").read_text()) == {
+        "n_in": 3,
+        "n_valid": 2,
+        "n_invalid": 1,
+        "invalid_finish_reasons": {"length": 1},
+    }
+
+
+def test_failed_samples_file_is_overwritten_on_rerun(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    step_dir = tmp_path / "1-definer-d"
+    step_dir.mkdir()
+    (step_dir / "failed_samples.jsonl").write_text('{"stale": 1}\n')
+    _patch_inputs(
+        monkeypatch,
+        _RunDataset([{"id": 0}]),
+        [_make_step(name="d", post_field_renamer={})],
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
+    )
+
+    assert (step_dir / "failed_samples.jsonl").read_text() == ""
+    attrition = json.loads((step_dir / "attrition.json").read_text())
+    assert attrition["n_invalid"] == 0
 
 
 def test_run_generation_raises_when_all_samples_invalid(
@@ -731,36 +794,121 @@ def test_run_generation_overwrite_discards_existing_output(
     assert not (done / "stale.txt").exists()
 
 
-def test_run_generation_resumed_step_merges_back_no_revision_rows(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    scripted: type[_ScriptedAnnotator],
-) -> None:
-    ds = _RunDataset(
-        [
-            {"id": 0, "revisie-nodig_a": True, "feedback": "fix this"},
-            {"id": 1, "revisie-nodig_a": False, "feedback": ""},
-        ]
-    )
-    steps = [
+REVISOR_SCHEMA = {
+    "properties": {"samenvatting-feedback": {}, "nieuwe-definitie": {}}
+}
+
+
+def _revisor_pipeline() -> list:
+    return [
         _make_step(name="d", post_field_renamer={}),
-        _make_step(name="r", task="revisor", post_field_renamer={}),
+        _make_step(
+            name="r",
+            task="revisor",
+            schema=REVISOR_SCHEMA,
+            post_field_renamer={"nieuwe-definitie": "definitie-v2"},
+        ),
     ]
-    _patch_inputs(monkeypatch, ds, steps)
-    done = tmp_path / "2-revisor-r" / "done"
-    done.mkdir(parents=True)
-    (done / ".saved").write_text("1", encoding="utf-8")
+
+
+def _revisor_rows() -> list[dict]:
+    return [
+        {"id": i, "definitie-v1": f"v1-{i}", "feedback": fb}
+        for i, fb in enumerate(["fix", "", "fix", ""])
+    ]
+
+
+def _run_and_capture(
+    monkeypatch: pytest.MonkeyPatch, out_dir: Path, steps: list
+) -> list[dict]:
     pushed: list[_RunDataset] = []
     monkeypatch.setattr(
         _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
     )
+    _patch_inputs(monkeypatch, _RunDataset(_revisor_rows()), steps)
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=out_dir, hub_id="o/x")
+    )
+    return pushed[0].rows
+
+
+def test_revisor_sends_only_rows_with_feedback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    scripted.new_columns = {
+        "nieuwe-definitie": "revised",
+        "samenvatting-feedback": "sum",
+    }
+    sent: list[list[int]] = []
+    original = scripted.annotate_dataset
+
+    def spy(self, **kwargs):
+        if kwargs["task_prefix"].startswith("2-"):
+            sent.append(kwargs["dataset"]["id"])
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(scripted, "annotate_dataset", spy)
+
+    rows = _run_and_capture(monkeypatch, tmp_path, _revisor_pipeline())
+
+    assert sent == [[0, 2]]
+    assert [r["id"] for r in rows] == [0, 1, 2, 3]
+    assert [r["revisie-uitgevoerd"] for r in rows] == [True, False] * 2
+    assert [r["definitie-v2"] for r in rows] == [
+        "revised",
+        "v1-1",
+        "revised",
+        "v1-3",
+    ]
+    assert rows[1]["samenvatting-feedback"] is None
+    assert rows[1]["2-r_valid_fields"] is True
+    assert "__row_idx" not in rows[0]
+
+
+def test_resumed_run_equals_fresh_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    scripted.new_columns = {
+        "nieuwe-definitie": "revised",
+        "samenvatting-feedback": "sum",
+    }
+    fresh = _run_and_capture(monkeypatch, tmp_path, _revisor_pipeline())
+    calls_after_fresh = scripted.num_calls
+
+    resumed = _run_and_capture(monkeypatch, tmp_path, _revisor_pipeline())
+
+    assert scripted.num_calls == calls_after_fresh
+    assert resumed == fresh
+    assert len(resumed) == 4
+
+
+def test_revisor_without_feedback_skips_the_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    rows = _revisor_rows()
+    for row in rows:
+        row["feedback"] = ""
+    pushed: list[_RunDataset] = []
+    monkeypatch.setattr(
+        _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
+    )
+    _patch_inputs(monkeypatch, _RunDataset(rows), _revisor_pipeline())
 
     dg.run_generation(
         dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id="o/x")
     )
 
     assert scripted.num_calls == 1
-    assert [r["id"] for r in pushed[0].rows] == [0, 1]
+    assert [r["definitie-v2"] for r in pushed[0].rows] == [
+        f"v1-{i}" for i in range(4)
+    ]
+    assert not any(r["revisie-uitgevoerd"] for r in pushed[0].rows)
 
 
 def test_run_generation_splits_judge_scores(
@@ -773,15 +921,29 @@ def test_run_generation_splits_judge_scores(
     monkeypatch.setattr(
         _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
     )
+    judged: list[list[str]] = []
+    original = scripted.annotate_dataset
+
+    def spy(self, **kwargs):
+        if kwargs["task_prefix"].startswith("2-"):
+            judged.append(kwargs["dataset"]["te-beoordelen-definitie"])
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(scripted, "annotate_dataset", spy)
     steps = [
         _make_step(name="d", post_field_renamer={}),
         _make_step(
             name="j",
             task="judge",
+            definition_column="originele-definitie",
             post_field_renamer={"raw": "begrijpelijkheid"},
         ),
     ]
-    _patch_inputs(monkeypatch, _RunDataset([{"id": 0}]), steps)
+    _patch_inputs(
+        monkeypatch,
+        _RunDataset([{"id": 0, "originele-definitie": "orig"}]),
+        steps,
+    )
 
     dg.run_generation(
         dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id="o/x")
@@ -791,6 +953,8 @@ def test_run_generation_splits_judge_scores(
     assert row["analyse_begrijpelijkheid"] == "goed"
     assert row["score_begrijpelijkheid"] == 4
     assert "begrijpelijkheid" not in row
+    assert judged == [["orig"]]
+    assert "te-beoordelen-definitie" not in row
 
 
 def test_run_generation_concats_feedback_after_last_feedback_step(
@@ -825,3 +989,129 @@ def test_run_generation_concats_feedback_after_last_feedback_step(
     assert pushed[0].rows[0]["feedback"] == (
         "*Feedback van reviewer 1*\n- gebruik: te vaag"
     )
+
+
+@pytest.mark.parametrize(("num_samples", "expected"), [(2, 2), (None, 4)])
+def test_run_generation_applies_num_samples_to_hub_dataset(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+    num_samples: int | None,
+    expected: int,
+) -> None:
+    hub_ds = Dataset.from_list([{"id": i} for i in range(4)])
+    monkeypatch.setattr(dg, "load_dataset", lambda hub_id: {"train": hub_ds})
+    seen: list[int] = []
+
+    def annotate(self, **kwargs):
+        seen.append(len(kwargs["dataset"]))
+        prefix = kwargs["task_prefix"]
+        return _RunDataset(
+            [
+                {
+                    **row,
+                    f"{prefix}valid_fields": True,
+                    f"{prefix}finish_reason": "stop",
+                }
+                for row in kwargs["dataset"].to_list()
+            ]
+        )
+
+    monkeypatch.setattr(scripted, "annotate_dataset", annotate)
+    monkeypatch.setattr(
+        dg,
+        "build_pipeline",
+        lambda config: _FakePipeline(
+            [_make_step(name="d", post_field_renamer={})]
+        ),
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(
+            root_output_dir=tmp_path,
+            hub_id=None,
+            from_hub_id="o/hub",
+            num_samples=num_samples,
+        )
+    )
+
+    assert seen == [expected]
+
+
+def _candidate_ds() -> Dataset:
+    ds = Dataset.from_list(
+        [
+            {
+                "definitie-v1": "v1",
+                "definitie-v2": "v2",
+                "originele-definitie": "orig",
+                "lemmavorm": f"woord{i}",
+            }
+            for i in range(5)
+        ]
+    )
+    return ds.map(dg.shuffle_definitions)
+
+
+def test_ranker_rotation_zero_matches_shuffled_definitions() -> None:
+    ds = _candidate_ds()
+    step = _make_step(name="rk", task="ranker")
+
+    out = dg._add_ranker_positions(ds, step, num_proc=1)
+
+    for row in out:
+        for i in (1, 2, 3):
+            assert (
+                row[f"positie-definitie-{i}"] == row[f"random-definitie-{i}"]
+            )
+        assert row["volgorde_rk"] == row["shuffle-order"]
+
+
+def test_ranker_rotation_shifts_candidates_left() -> None:
+    ds = _candidate_ds()
+    step = _make_step(name="rk", task="ranker", order_rotation=1)
+
+    out = dg._add_ranker_positions(ds, step, num_proc=1)
+
+    for row in out:
+        assert row["volgorde_rk"] == [
+            row["shuffle-order"][1],
+            row["shuffle-order"][2],
+            row["shuffle-order"][0],
+        ]
+        assert row["positie-definitie-1"] == row["random-definitie-2"]
+        assert row["positie-definitie-3"] == row["random-definitie-1"]
+
+
+def test_ranker_rotation_must_be_below_candidate_count() -> None:
+    step = _make_step(name="rk", task="ranker", order_rotation=3)
+
+    with pytest.raises(ValueError, match="order_rotation 3"):
+        dg._add_ranker_positions(_candidate_ds(), step, num_proc=1)
+
+
+def test_run_generation_drops_position_columns_and_keeps_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    pushed: list[_RunDataset] = []
+    monkeypatch.setattr(
+        _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
+    )
+    row = {"definitie-v1": "a", "originele-definitie": "b"}
+    steps = [
+        _make_step(name="d", post_field_renamer={}),
+        _make_step(
+            name="rk", task="ranker", order_rotation=1, post_field_renamer={}
+        ),
+    ]
+    _patch_inputs(monkeypatch, _RunDataset([row]), steps)
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id="o/x")
+    )
+
+    out = pushed[0].rows[0]
+    assert out["volgorde_rk"] == out["shuffle-order"][::-1]
+    assert not any(c.startswith("positie-definitie-") for c in out)
