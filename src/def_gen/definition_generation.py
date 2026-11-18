@@ -14,7 +14,13 @@ from random import Random
 from typing import Any, Literal
 
 import numpy as np
-from datasets import Value, concatenate_datasets, load_dataset
+from datasets import (
+    DatasetDict,
+    Value,
+    concatenate_datasets,
+    load_dataset,
+    load_from_disk,
+)
 from llm_annotator import Annotator
 from llm_annotator.clients import Client, ProviderRuntimeOptions
 from pydantic import (
@@ -134,8 +140,10 @@ class GenerateDefinitionsConfig(BaseModel):
     """Configuration for the definitions generation workflow.
 
     Args:
-        from_hub_id: Optional hub dataset id to initialize from instead of
-            the source data file.
+        from_hub_id: Optional hub dataset id or path of a local directory
+            saved with `save_to_disk` to initialize from instead of the
+            source data file.
+        from_hub_split: Split to use from the hub or local dataset.
         num_samples: Number of examples to keep, taken as the first rows of
             the source data file or of the hub dataset. Use None for all rows.
         min_num_examples: Minimum number of examples per entry.
@@ -152,6 +160,7 @@ class GenerateDefinitionsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     from_hub_id: str | None = None
+    from_hub_split: str = "train"
     num_samples: int | None = 512
     min_num_examples: int = Field(default=3, ge=1)
     overwrite: bool = False
@@ -363,6 +372,22 @@ def shuffle_definitions(sample: dict[str, Any]) -> dict[str, Any]:
 
     output["shuffle-order"] = list(names)
     return output
+
+
+def load_source_dataset(from_hub_id: str, split: str = "train") -> Any:
+    """Load a split from a local `save_to_disk` directory or from the hub.
+
+    Args:
+        from_hub_id: Path of an existing local directory or a hub dataset id.
+        split: Split to take when the dataset has several.
+
+    Returns:
+        The dataset split.
+    """
+    if Path(from_hub_id).is_dir():
+        ds = load_from_disk(from_hub_id)
+        return ds[split] if isinstance(ds, DatasetDict) else ds
+    return load_dataset(from_hub_id)[split]
 
 
 def limit_samples(ds: Any, num_samples: int | None) -> Any:
@@ -651,7 +676,8 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
 
     if config.from_hub_id:
         ds = limit_samples(
-            load_dataset(config.from_hub_id)["train"], config.num_samples
+            load_source_dataset(config.from_hub_id, config.from_hub_split),
+            config.num_samples,
         )
     else:
         ds = init_data(

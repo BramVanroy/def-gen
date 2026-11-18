@@ -133,10 +133,10 @@ def test_pipeline_rejects_second_definer() -> None:
 @pytest.mark.parametrize(
     "tasks",
     [
-        [],
         ["feedback"],
         ["judge", "definer"],
         ["ranker", "definer", "judge"],
+        ["judge", "ranker"],
     ],
 )
 def test_pipeline_must_start_with_definer(tasks: list[str]) -> None:
@@ -144,6 +144,18 @@ def test_pipeline_must_start_with_definer(tasks: list[str]) -> None:
 
     with pytest.raises(ValueError, match="must start with a definer"):
         Pipeline(steps)
+
+
+def test_pipeline_rejects_no_steps() -> None:
+    with pytest.raises(ValueError, match="at least one step"):
+        Pipeline([])
+
+
+def test_pipeline_allows_judge_only() -> None:
+    pipe = Pipeline([_step("j1", "judge"), _step("j2", "judge")])
+
+    assert "definer" not in pipe
+    assert [s.last_of_task for s in pipe] == [False, True]
 
 
 def test_pipeline_revisor_requires_feedback() -> None:

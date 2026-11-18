@@ -165,8 +165,14 @@ class Pipeline:
         if any(s.task not in Task for s in self.steps):
             raise ValueError(f"Step tasks must be one of {list(Task)}!")
 
-        if not self.steps or self.steps[0].task != Task.definer:
-            raise ValueError("Pipeline must start with a definer step!")
+        if not self.steps:
+            raise ValueError("Pipeline must have at least one step!")
+        judge_only = all(s.task == Task.judge for s in self.steps)
+        if not judge_only and self.steps[0].task != Task.definer:
+            raise ValueError(
+                "Pipeline must start with a definer step unless all steps"
+                " are judge steps!"
+            )
         if any(s.task == Task.definer for s in self.steps[1:]):
             raise ValueError("Pipeline can only contain one definer step!")
 
