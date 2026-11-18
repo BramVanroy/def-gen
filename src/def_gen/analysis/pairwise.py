@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import binomtest
 
-from def_gen.analysis.stats import bootstrap_ci
+from def_gen.analysis.stats import bootstrap_ci, ratio_of_sums
 
 
 OUTCOMES = ["a", "tie", "b"]
@@ -104,4 +104,106 @@ def win_rates(
             row[f"{name}_ci_high"] = ci[1, i]
         row["sign_test_p"] = _sign_test(counts[0], counts[2])
         rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def position_bias(
+    pairs: pd.DataFrame, num_bootstraps: int = 2000, seed: int | None = 42
+) -> pd.DataFrame:
+    """Estimate how often the definition at position 1 wins, per judge.
+
+    Only non-tied pairs count. All system pairs and orders of a judge are
+    pooled, and the bootstrap resamples items with all their pairs. The
+    binomial test against 0.5 treats the pairs as independent and is
+    therefore optimistic. The bootstrap interval accounts for the pairing.
+
+    Args:
+        pairs: The pairs table of `AnalysisData`.
+        num_bootstraps: Number of bootstrap resamples.
+        seed: Seed of the bootstrap.
+
+    Returns:
+        One row per judge with n_pairs, n_ties, n_position1_wins,
+        n_position2_wins, p_position1 with its `_ci_low`/`_ci_high` bounds
+        and binom_test_p.
+    """
+    rows = []
+    for judge, group in pairs.groupby("judge"):
+        counts = (
+            group.assign(
+                pos1=group["winner_position"] == 1,
+                decided=group["winner_position"].notna(),
+            )
+            .groupby("item")[["pos1", "decided"]]
+            .sum()
+            .to_numpy()
+        )
+        n_pos1, n_decided = (int(n) for n in counts.sum(axis=0))
+        ci = bootstrap_ci(counts, ratio_of_sums, num_bootstraps, seed)
+        rows.append(
+            {
+                "judge": judge,
+                "n_pairs": len(group),
+                "n_ties": len(group) - n_decided,
+                "n_position1_wins": n_pos1,
+                "n_position2_wins": n_decided - n_pos1,
+                "p_position1": n_pos1 / n_decided
+                if n_decided
+                else float("nan"),
+                "p_position1_ci_low": ci[0],
+                "p_position1_ci_high": ci[1],
+                "binom_test_p": _sign_test(n_pos1, n_decided - n_pos1),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def order_consistency(
+    pairs: pd.DataFrame, num_bootstraps: int = 2000, seed: int | None = 42
+) -> pd.DataFrame:
+    """Compute the share of comparisons with the same outcome in all orders.
+
+    Outcomes are compared after mapping positions back to systems, so a
+    judge that always picks position 1 has a consistency of 0. Comparisons
+    that were judged in only one order are counted and left out.
+
+    Args:
+        pairs: The pairs table of `AnalysisData`.
+        num_bootstraps: Number of bootstrap resamples.
+        seed: Seed of the bootstrap.
+
+    Returns:
+        One row per judge with n_comparisons (judged in two or more orders),
+        n_single_order, n_consistent, n_flips (one order picks a and another
+        b), and consistency with its `_ci_low`/`_ci_high` bounds.
+    """
+    combined = outcome_per_item(pairs)
+    order_sets = pairs.groupby([*PAIR_GROUP, "item"], sort=True)[
+        "outcome"
+    ].agg(set)
+    combined["flip"] = [{"a", "b"} <= s for s in order_sets.to_numpy()]
+    rows = []
+    for judge, group in combined.groupby("judge"):
+        multi = group[group["n_orders"] > 1]
+        counts = (
+            multi.assign(n=1)
+            .groupby("item")[["consistent", "n"]]
+            .sum()
+            .to_numpy()
+        )
+        ci = bootstrap_ci(counts, ratio_of_sums, num_bootstraps, seed)
+        rows.append(
+            {
+                "judge": judge,
+                "n_comparisons": len(multi),
+                "n_single_order": len(group) - len(multi),
+                "n_consistent": int(multi["consistent"].sum()),
+                "n_flips": int(multi["flip"].sum()),
+                "consistency": multi["consistent"].mean()
+                if len(multi)
+                else float("nan"),
+                "consistency_ci_low": ci[0],
+                "consistency_ci_high": ci[1],
+            }
+        )
     return pd.DataFrame(rows)

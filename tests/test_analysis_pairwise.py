@@ -2,8 +2,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from def_gen.analysis.pairwise import outcome_per_item, win_rates
+from def_gen.analysis.pairwise import (
+    order_consistency,
+    outcome_per_item,
+    position_bias,
+    win_rates,
+)
 from def_gen.analysis.stats import bootstrap_ci, ratio_of_sums
+from tests.conftest import simulate_study
 
 
 def _pairs(outcomes_rot0: list[str], outcomes_rot1: list[str]) -> pd.DataFrame:
@@ -86,3 +92,53 @@ def test_win_rates_on_simulated_study(study) -> None:
     assert len(both) == 6
     assert (both.loc["gemma-3-27b", "win_rate"] > 0.5).all()
     assert (both.loc["Qwen3.6-27B", "win_rate"] < 0.5).all()
+
+
+def test_position_bias_counts_position_one_wins() -> None:
+    # Rotation 0 shows the writer at position 2, rotation 1 at position 1.
+    pairs = _pairs(["b", "b", "tie"], ["a", "a", "a"])
+
+    bias = position_bias(pairs, num_bootstraps=100).iloc[0]
+
+    assert (bias["n_pairs"], bias["n_ties"]) == (6, 1)
+    assert bias["n_position1_wins"] == 5
+    assert bias["p_position1"] == pytest.approx(1.0)
+    assert bias["binom_test_p"] == pytest.approx(2 * 0.5**5)
+
+
+def test_position_bias_without_decided_pairs() -> None:
+    bias = position_bias(_pairs(["tie"], ["tie"]), num_bootstraps=10)
+
+    assert np.isnan(bias.loc[0, "p_position1"])
+    assert np.isnan(bias.loc[0, "binom_test_p"])
+
+
+def test_order_consistency() -> None:
+    pairs = _pairs(["a", "a", "b", "tie"], ["a", "b", "tie", "tie"])
+    single = pd.DataFrame([{**pairs.iloc[0].to_dict(), "item": 9}])
+
+    out = order_consistency(
+        pd.concat([pairs, single]), num_bootstraps=100
+    ).iloc[0]
+
+    assert (out["n_comparisons"], out["n_single_order"]) == (4, 1)
+    assert (out["n_consistent"], out["n_flips"]) == (2, 1)
+    assert out["consistency"] == pytest.approx(0.5)
+    assert out["consistency_ci_low"] <= 0.5 <= out["consistency_ci_high"]
+
+
+def test_order_consistency_with_single_orders_only() -> None:
+    pairs = _pairs(["a"], ["a"])
+    out = order_consistency(pairs[pairs["rotation"] == 0], num_bootstraps=10)
+
+    assert np.isnan(out.loc[0, "consistency"])
+
+
+def test_simulated_position_bias_is_detected() -> None:
+    biased = simulate_study(num_items=80, seed=3, position_bias=3.0)
+
+    bias = position_bias(biased.pairs, num_bootstraps=200)
+    consistency = order_consistency(biased.pairs, num_bootstraps=200)
+
+    assert (bias["p_position1_ci_low"] > 0.5).all()
+    assert (consistency["consistency"] < 0.5).all()
