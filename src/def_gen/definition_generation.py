@@ -745,8 +745,8 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
         "w", encoding="utf-8"
     ) as fh:
         data = {
-            **pipe.to_dict(),
             **config.to_dict(),
+            **pipe.to_dict(),
             "run_metadata": run_metadata(),
         }
         json.dump(data, fh, indent=4, cls=PathCompatibleEncoder)
