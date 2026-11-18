@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
 import shutil
 from collections import Counter
@@ -174,7 +175,7 @@ class GenerateDefinitionsConfig(BaseModel):
 
 def set_seed(seed: int = 42) -> None:
     """Set random seeds for deterministic behavior across libraries."""
-    Random(seed).seed(seed)
+    random.seed(seed)
     np.random.seed(seed)
 
     try:
