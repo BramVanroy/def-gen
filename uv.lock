@@ -685,6 +685,20 @@ wheels = [
 ]
 
 [[package]]
+name = "choix"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cc/83/9c9b9aa651e16813ca893b70f4384f2e9c369eafd5922f4ddaf32cde2e9e/choix-0.4.1.tar.gz", hash = "sha256:7c85d13845400932508c45a6a6a3e7a44f637969ffd506e1c7f5db07de1560b4", size = 112425, upload-time = "2025-08-10T20:19:45.346Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/f1/8ce3fa2fe1649c93ab7e177c3b11b9fd98c66180af3a365cfe7bd0118806/choix-0.4.1-py3-none-any.whl", hash = "sha256:15fe145ffc194dc6b4ba5a44ef24667fa0107578fb5b36723ab0b5e87eeae29f", size = 20575, upload-time = "2025-08-10T20:19:44.255Z" },
+]
+
+[[package]]
 name = "click"
 version = "8.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1102,6 +1116,7 @@ wheels = [
 name = "def-gen"
 source = { editable = "." }
 dependencies = [
+    { name = "choix" },
     { name = "datasets" },
     { name = "krippendorff" },
     { name = "llm-annotator" },
@@ -1135,6 +1150,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "choix", specifier = ">=0.4.1,<0.5" },
     { name = "datasets", specifier = ">=5.2,<6" },
     { name = "krippendorff", specifier = ">=0.9,<0.10" },
     { name = "llm-annotator", specifier = ">=0.19,<0.20" },
