@@ -12,13 +12,14 @@ from statsmodels.stats.inter_rater import (
 )
 
 
-def calculate_cohen_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
+def calculate_cohen_kappa(df: pd.DataFrame, columns: Sequence[str]) -> float:
     """Calculate Cohen's kappa for two raters over nominal categories.
 
     Cohen's kappa quantifies agreement between exactly two raters while
     discounting chance overlap. It is suited to nominal (unordered categorical)
     labels, makes no normality assumptions, and should not be used for ordinal
-    or interval data without weighting.
+    or interval data without weighting. Rows with a missing value in either
+    column are dropped.
 
     Args:
         df: DataFrame containing the annotations to compare.
@@ -36,7 +37,8 @@ def calculate_cohen_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
     if len(columns) != 2:
         raise ValueError("Expected 2 columns to calculate cohen kappa.")
 
-    categories = df[columns].stack().dropna().unique().tolist()
+    df = df[list(columns)].dropna()
+    categories = df.stack().unique().tolist()
     confusion = pd.crosstab(df[columns[0]], df[columns[1]], dropna=True)
     confusion = confusion.reindex(
         index=categories, columns=categories, fill_value=0
@@ -45,13 +47,13 @@ def calculate_cohen_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
     return float(cohen.kappa)
 
 
-def calculate_fleiss_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
+def calculate_fleiss_kappa(df: pd.DataFrame, columns: Sequence[str]) -> float:
     """Calculate Fleiss' kappa for multiple raters over nominal categories.
 
     Fleiss' kappa generalizes Cohen's kappa to more than two raters, requiring
-    that each item be rated the same number of times. It targets nominal,
-    non-normally distributed annotations and is unsuited for ordered or
-    continuous scales.
+    that each item be rated the same number of times, so rows with a missing
+    value in any column are dropped. It targets nominal annotations and is
+    unsuited for ordered or continuous scales.
 
     Args:
         df: DataFrame containing rater annotations.
@@ -63,12 +65,13 @@ def calculate_fleiss_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
           * 0 indicates chance-level agreement, and
           * 1 indicates perfect agreement.
     """
-    categories = df[columns].stack().dropna().unique().tolist()
+    df = df[list(columns)].dropna()
+    categories = df.stack().unique().tolist()
     cat2id = {c: i for i, c in enumerate(categories)}
-    ratings_matrix = df[columns].map(lambda v: cat2id[v]).to_numpy()
+    ratings_matrix = df.map(cat2id.get).to_numpy()
     table, _ = aggregate_raters(ratings_matrix)
     fleiss = fleiss_kappa(table, method="fleiss")
-    return fleiss
+    return float(fleiss)
 
 
 def calculate_krippendorff_alpha(

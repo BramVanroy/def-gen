@@ -68,6 +68,52 @@ def test_krippendorff_alpha_matches_hand_computed_value() -> None:
     )
 
 
+def test_cohen_kappa_drops_rows_with_missing_values() -> None:
+    df = pd.concat(
+        [
+            _two_rater_df(),
+            pd.DataFrame({"r1": [None, "x"], "r2": ["y", None]}),
+        ],
+        ignore_index=True,
+    )
+
+    assert calculate_cohen_kappa(df, ["r1", "r2"]) == pytest.approx(0.4)
+
+
+def test_fleiss_kappa_drops_rows_with_missing_values() -> None:
+    df = pd.concat(
+        [_small_df(), pd.DataFrame({"r1": [None, "b"], "r2": ["a", None]})],
+        ignore_index=True,
+    )
+
+    assert calculate_fleiss_kappa(df, ["r1", "r2"]) == pytest.approx(7 / 15)
+
+
+def test_krippendorff_alpha_accepts_missing_values() -> None:
+    # the last unit has a single rating and is not pairable
+    df = pd.DataFrame(
+        {"r1": ["a", "a", "b", "a", None], "r2": ["a", "a", "b", "b", "b"]}
+    )
+
+    assert calculate_krippendorff_alpha(df, ["r1", "r2"]) == (
+        pytest.approx(8 / 15)
+    )
+
+
+def test_krippendorff_alpha_interval_accepts_nan() -> None:
+    df = pd.DataFrame({"r1": [1.0, 2.0, np.nan], "r2": [3.0, 2.0, 5.0]})
+
+    assert calculate_krippendorff_alpha(df, ["r1", "r2"], "interval") == (
+        pytest.approx(-0.5)
+    )
+
+
+def test_krippendorff_alpha_single_value_is_nan() -> None:
+    df = pd.DataFrame({"r1": ["a", "a"], "r2": ["a", "a"]})
+
+    assert np.isnan(calculate_krippendorff_alpha(df, ["r1", "r2"]))
+
+
 def test_krippendorff_alpha_interval_on_numeric_scores() -> None:
     # units (1, 3) and (2, 2): Do = 2, De = 16/12 -> alpha = 1 - 2 / (4/3)
     df = pd.DataFrame({"r1": [1.0, 2.0], "r2": [3.0, 2.0]})
