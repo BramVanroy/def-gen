@@ -1,6 +1,6 @@
 """Agreement metrics between raters."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 import krippendorff
 import pandas as pd
@@ -121,3 +121,29 @@ def calculate_preference_rates(
     counts = flat.value_counts().reindex(categories, fill_value=0).astype(int)
     rates = (counts / counts.sum()).to_dict()
     return rates
+
+
+def calculate_percent_agreement(
+    df: pd.DataFrame, columns: Sequence[str]
+) -> float:
+    """Calculate the share of rows in which all raters give the same label.
+
+    Rows with a missing value in any of the columns are excluded, so the
+    denominator is the number of complete rows.
+
+    Args:
+        df: DataFrame containing the annotations to compare.
+        columns: Column names, one per rater.
+
+    Returns:
+        float: Proportion in [0, 1], or NaN if no row is complete.
+
+    Examples:
+        >>> df = pd.DataFrame({"r1": ["a", "a", "b"], "r2": ["a", "b", None]})
+        >>> calculate_percent_agreement(df, ["r1", "r2"])
+        0.5
+    """
+    complete = df[list(columns)].dropna()
+    if complete.empty:
+        return float("nan")
+    return float((complete.nunique(axis=1) == 1).mean())

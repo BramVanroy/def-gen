@@ -7,6 +7,7 @@ from def_gen.agreement.metrics import (
     calculate_cohen_kappa,
     calculate_fleiss_kappa,
     calculate_krippendorff_alpha,
+    calculate_percent_agreement,
     calculate_preference_rates,
 )
 from def_gen.agreement.utils import confusion_matrix
@@ -65,6 +66,32 @@ def test_krippendorff_alpha_matches_hand_computed_value() -> None:
     assert calculate_krippendorff_alpha(_small_df(), ["r1", "r2"]) == (
         pytest.approx(8 / 15)
     )
+
+
+def test_percent_agreement_matches_hand_computed_value() -> None:
+    # 3 of 4 rows agree
+    assert calculate_percent_agreement(_small_df(), ["r1", "r2"]) == 0.75
+
+
+def test_percent_agreement_excludes_rows_with_missing_values() -> None:
+    df = pd.DataFrame(
+        {"r1": ["a", "a", "b", None], "r2": ["a", "b", None, "b"]}
+    )
+
+    # only rows 0 and 1 are complete, one of them agrees
+    assert calculate_percent_agreement(df, ["r1", "r2"]) == 0.5
+
+
+def test_percent_agreement_three_raters_needs_all_to_agree() -> None:
+    df = pd.DataFrame({"r1": ["a", "a"], "r2": ["a", "a"], "r3": ["a", "b"]})
+
+    assert calculate_percent_agreement(df, ["r1", "r2", "r3"]) == 0.5
+
+
+def test_percent_agreement_without_complete_rows_is_nan() -> None:
+    df = pd.DataFrame({"r1": ["a", None], "r2": [None, "b"]})
+
+    assert np.isnan(calculate_percent_agreement(df, ["r1", "r2"]))
 
 
 def test_preference_rates_count_all_raters() -> None:
