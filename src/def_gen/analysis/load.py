@@ -1,13 +1,15 @@
 """Read pipeline runs into long tables for the analysis.
 
 A run directory holds `pipeline.json`, the final dataset in
-`full_process_done` and an `attrition.json` per step directory. One run has
-at most one writer (its definer step). The ANW definitions are the system
-"anw" and every other system is named after the short model name of its
-writer.
+`full_process_done` and an `attrition.json` per step directory. A writer run
+has one definer step named "definer-<writer>" whose definitions are in
+"definitie-v1". A head-to-head run has no definer and holds the definitions
+of several writers in "definitie-<writer>" columns. The ANW definitions are
+the system "anw".
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,15 @@ ANW_COLUMN = "originele-definitie"
 WRITER_COLUMN = "definitie-v1"
 ANW_SYSTEM = "anw"
 RANKING_LABELS = {"1 beter dan 2": 1, "2 beter dan 1": 2, "evenwaardig": None}
-MODEL_FAMILIES = ("gpt-oss", "qwen", "gemma")
+MODEL_FAMILIES = {
+    "gpt-oss": "gpt-oss",
+    "qwen": "qwen",
+    "gemma": "gemma",
+    "gpt": "openai",
+}
+DEFINER_PREFIX = "definer-"
+WRITER_PREFIX = "definitie-"
+VERSION_COLUMN = re.compile(r"definitie-v\d+")
 
 SCORE_KEYS = ["item", "system", "judge", "criterion"]
 PAIR_KEYS = ["item", "judge", "rotation", "system_a", "system_b"]
@@ -38,7 +48,7 @@ class AnalysisData:
             judge, rotation, system_a, system_b, position_a (1 or 2, where
             system_a was shown), outcome ("a", "b" or "tie") and
             winner_position (1, 2 or None for a tie). If one of the systems
-            is "anw", it is system_b.
+            is "anw", it is system_b; two writers are in alphabetical order.
         definitions: One row per item and system with the definition text.
         attrition: One row per step with run, step, task, model, n_in,
             n_valid, n_invalid and invalid_finish_reasons (a JSON string).
@@ -71,29 +81,60 @@ def short_model_name(model_name: str) -> str:
 
 
 def model_family(model_name: str) -> str:
-    """Return the model family (gpt-oss, qwen or gemma) of a model name.
+    """Return the model family of a model or writer name.
+
+    The keys of `MODEL_FAMILIES` are checked in order, so "gpt-oss" is
+    matched before the general "gpt" (OpenAI).
 
     Args:
-        model_name: A full or short model name.
+        model_name: A full or short model name, or a writer name.
 
     Returns:
-        The first known family that occurs in the lowercased name, or the
-        lowercased short name if none does.
+        The family of the first key that occurs in the lowercased name, or
+        the lowercased short name if none does.
 
     Examples:
         >>> model_family("RedHatAI/gemma-3-27b-it-FP8-dynamic")
         'gemma'
         >>> model_family("openai/gpt-oss-120b")
         'gpt-oss'
+        >>> model_family("gpt54-nano")
+        'openai'
     """
     name = short_model_name(model_name).lower()
-    return next((fam for fam in MODEL_FAMILIES if fam in name), name)
+    return next(
+        (fam for key, fam in MODEL_FAMILIES.items() if key in name), name
+    )
 
 
-def _system_for_column(column: str, writer: str | None) -> str:
-    """Return the system name of a definition column in a run."""
+def system_for_column(column: str, writer: str | None) -> str:
+    """Return the system name of a definition column in a run.
+
+    Args:
+        column: A definition column of the run dataset.
+        writer: The writer of the run (from its definer step), if any.
+
+    Returns:
+        "anw" for the ANW definition, the run's writer for "definitie-v1",
+        "<writer>/<column>" for other versions such as "definitie-v2", and
+        the name after the prefix for other "definitie-<writer>" columns (as
+        in a head-to-head run).
+
+    Raises:
+        ValueError: If the column needs a writer and the run has none.
+
+    Examples:
+        >>> system_for_column("definitie-v1", "gemma4-26b-a4b")
+        'gemma4-26b-a4b'
+        >>> system_for_column("definitie-qwen36-35b-a3b", None)
+        'qwen36-35b-a3b'
+    """
     if column == ANW_COLUMN:
         return ANW_SYSTEM
+    if column.startswith(WRITER_PREFIX) and not VERSION_COLUMN.fullmatch(
+        column
+    ):
+        return column.removeprefix(WRITER_PREFIX)
     if writer is None:
         raise ValueError(
             f"Column {column!r} is not the ANW definition, but the run has"
@@ -104,12 +145,28 @@ def _system_for_column(column: str, writer: str | None) -> str:
     return f"{writer}/{column}"
 
 
-def _run_writer(steps: list[dict[str, Any]]) -> str | None:
-    """Return the short model name of the single definer step, if any."""
+def run_writer(steps: list[dict[str, Any]]) -> str | None:
+    """Return the writer name of the single definer step of a run, if any.
+
+    Args:
+        steps: The steps from `pipeline.json`.
+
+    Returns:
+        The step name without the "definer-" prefix, the short model name if
+        the step name lacks that prefix, or None without a definer step.
+
+    Raises:
+        ValueError: If the run has more than one definer step.
+    """
     definers = [s for s in steps if s["task"] == "definer"]
     if len(definers) > 1:
         raise ValueError("A run with more than one definer is not supported.")
-    return short_model_name(definers[0]["model_name"]) if definers else None
+    if not definers:
+        return None
+    name = definers[0]["name"]
+    if name.startswith(DEFINER_PREFIX):
+        return name.removeprefix(DEFINER_PREFIX)
+    return short_model_name(definers[0]["model_name"])
 
 
 def _require_columns(df: pd.DataFrame, columns: list[str], step: str) -> None:
@@ -132,12 +189,12 @@ def scores_from_run(
         A DataFrame with the columns run, item, system, judge, criterion and
         score.
     """
-    writer = _run_writer(steps)
+    writer = run_writer(steps)
     frames = []
     for step in steps:
         if step["task"] != "judge":
             continue
-        system = _system_for_column(step["definition_column"], writer)
+        system = system_for_column(step["definition_column"], writer)
         renamer = step["post_field_renamer"]
         _require_columns(
             df, [f"score_{r}" for r in renamer.values()], step["name"]
@@ -169,7 +226,8 @@ def pairs_from_run(
     The ranker answers "1 beter dan 2", "2 beter dan 1" or "evenwaardig" about
     the definitions at position 1 and 2. `volgorde_<step name>` holds the
     source columns in position order. The outcome is expressed relative to
-    the canonical pair, in which "anw" is always system_b.
+    the canonical pair, in which "anw" is always system_b and two writers
+    are in alphabetical order.
 
     Args:
         df: The final dataset of the run as a DataFrame.
@@ -188,7 +246,7 @@ def pairs_from_run(
         ranker says "2 beter dan 1", the writer (system_a, shown at position
         2) wins: position_a is 2, outcome is "a" and winner_position is 2.
     """
-    writer = _run_writer(steps)
+    writer = run_writer(steps)
     rows = []
     for step in steps:
         if step["task"] != "ranker":
@@ -209,7 +267,7 @@ def pairs_from_run(
                 raise ValueError(
                     f"Unknown ranking {label!r} in step {step['name']!r}."
                 )
-            shown = [_system_for_column(c, writer) for c in order]
+            shown = [system_for_column(c, writer) for c in order]
             system_a, system_b = sorted(
                 shown, key=lambda s: (s == ANW_SYSTEM, s)
             )
@@ -247,6 +305,9 @@ def definitions_from_run(
 ) -> pd.DataFrame:
     """Collect the ANW and writer definitions of one run.
 
+    The columns are "originele-definitie", "definitie-v1" (if the run has a
+    writer) and every "definitie-<writer>" column of a head-to-head run.
+
     Args:
         df: The final dataset of the run as a DataFrame.
         steps: The steps from `pipeline.json`.
@@ -254,16 +315,23 @@ def definitions_from_run(
     Returns:
         A DataFrame with the columns item, system and definition.
     """
-    writer = _run_writer(steps)
-    sources = {ANW_COLUMN: ANW_SYSTEM}
-    if writer is not None:
-        sources[WRITER_COLUMN] = writer
+    writer = run_writer(steps)
+    columns = [
+        c
+        for c in df.columns
+        if c == ANW_COLUMN
+        or (c == WRITER_COLUMN and writer is not None)
+        or (c.startswith(WRITER_PREFIX) and not VERSION_COLUMN.fullmatch(c))
+    ]
     frames = [
         pd.DataFrame(
-            {"item": df[ITEM_COLUMN], "system": system, "definition": df[col]}
+            {
+                "item": df[ITEM_COLUMN],
+                "system": system_for_column(col, writer),
+                "definition": df[col],
+            }
         )
-        for col, system in sources.items()
-        if col in df.columns
+        for col in columns
     ]
     return pd.concat(frames, ignore_index=True)
 

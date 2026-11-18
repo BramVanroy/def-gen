@@ -228,3 +228,79 @@ def test_scores_of_other_definition_column() -> None:
 
     assert set(scores["system"]) == {"gemma-3-27b-it-FP8-dynamic/definitie-v2"}
     assert scores_from_run(df, steps[:1], "run").empty
+
+
+def test_head_to_head_run_combines_with_writer_run(tmp_path) -> None:
+    gemma, qwen = "definitie-gemma4-26b-a4b", "definitie-qwen36-35b-a3b"
+    h2h_steps = [
+        make_step(
+            0,
+            "h2h-q-r0",
+            "ranker",
+            QWEN,
+            post_field_renamer={"ranking": "ranking_h2h_q_r0"},
+        ),
+        make_step(
+            1,
+            "h2h-q-r1",
+            "ranker",
+            QWEN,
+            order_rotation=1,
+            post_field_renamer={"ranking": "ranking_h2h_q_r1"},
+        ),
+    ]
+    h2h = read_run(
+        write_run(
+            tmp_path / "head-to-head",
+            h2h_steps,
+            {
+                "betekenis_pid": [1, 2],
+                "originele-definitie": ["anw 1", "anw 2"],
+                gemma: ["gemma 1", "gemma 2"],
+                qwen: ["qwen 1", "qwen 2"],
+                "volgorde_h2h-q-r0": [[qwen, gemma]] * 2,
+                "volgorde_h2h-q-r1": [[gemma, qwen]] * 2,
+                "ranking_h2h_q_r0": ["1 beter dan 2", "evenwaardig"],
+                "ranking_h2h_q_r1": ["1 beter dan 2", "2 beter dan 1"],
+            },
+        )
+    )
+    writer_steps = [
+        make_step(0, "definer-gemma4-26b-a4b", "definer", GEMMA),
+        make_step(
+            1, "judge-q", "judge", QWEN, definition_column="definitie-v1"
+        ),
+    ]
+    writer = read_run(
+        write_run(
+            tmp_path / "writer",
+            writer_steps,
+            {
+                "betekenis_pid": [1, 2],
+                "originele-definitie": ["anw 1", "anw 2"],
+                "definitie-v1": ["gemma 1", "gemma 2"],
+                **_score_columns("judge-q", [4, 5]),
+            },
+        )
+    )
+
+    data = combine_runs([writer, h2h])
+
+    rot0 = data.pairs[data.pairs["rotation"] == 0]
+    assert set(rot0["system_a"]) == {"gemma4-26b-a4b"}
+    assert set(rot0["system_b"]) == {"qwen36-35b-a3b"}
+    assert rot0["outcome"].tolist() == ["b", "tie"]
+    rot1 = data.pairs[data.pairs["rotation"] == 1]
+    assert rot1["outcome"].tolist() == ["a", "b"]
+    assert set(data.scores["system"]) == {"gemma4-26b-a4b"}
+    assert len(data.definitions) == 6
+
+
+def test_conflicting_definitions_are_rejected(tmp_path) -> None:
+    run = read_run(_anw_run(tmp_path))
+    other = read_run(_anw_run(tmp_path / "other"))
+    other.definitions["definition"] = "changed"
+    other.scores["judge"] = "other-judge"
+
+    with pytest.raises(ValueError, match="definition rows"):
+        combine_runs([run, other])
