@@ -38,6 +38,7 @@ JUDGE_FIELDS = [
     "correctheid",
 ]
 FEEDBACK_FIELDS = [*JUDGE_FIELDS, "revisie-nodig"]
+REVISED_FIELD = "nieuwe-definitie"
 
 DEFAULT_DATA_PATH = ROOT.joinpath("data/anw_lemma_definitions.jsonl")
 
@@ -447,6 +448,114 @@ def build_pipeline(config: GenerateDefinitionsConfig) -> Pipeline:
         )
 
 
+ROW_IDX_COL = "__row_idx"
+
+
+def _drop_invalid(
+    ds: Any, step: Step, task_prefix: str, num_proc: int, failed_fh: Any
+) -> Any:
+    """Remove rows with `valid_fields=False` and log them to `failed_fh`.
+
+    Args:
+        ds: Annotated dataset with the `valid_fields` and `finish_reason` columns.
+        step: The step that produced `ds`.
+        task_prefix: Column prefix of the step.
+        num_proc: Number of workers for dataset operations.
+        failed_fh: Open file that receives the invalid rows as JSON lines.
+
+    Returns:
+        The dataset with valid rows only.
+
+    Raises:
+        ValueError: If no row is valid.
+    """
+    valid_col = f"{task_prefix}valid_fields"
+    valid_ds = ds.filter(
+        lambda is_valid: is_valid, input_columns=[valid_col], num_proc=num_proc
+    )
+    if len(valid_ds) == 0:
+        raise ValueError(
+            "All samples were filtered out after"
+            f" {step.name} with model {step.model_name}!"
+        )
+    if len(valid_ds) < len(ds):
+        invalid_ds = ds.filter(
+            lambda is_valid: not is_valid,
+            input_columns=[valid_col],
+            num_proc=num_proc,
+        )
+        print(
+            f"{len(invalid_ds)} samples were invalid after"
+            f" {step.name} with model {step.model_name}."
+            f" Dataset now has {len(valid_ds)} samples remaining."
+        )
+        print(
+            "A potential cause is that the model could not respond with"
+            " the full schema due to too-low max_completion_tokens in"
+            " client_run_kwargs. The stopping reasons for invalid"
+            " samples are below (valid='stop')."
+        )
+        counts = Counter(invalid_ds[f"{task_prefix}finish_reason"])
+        for reason, count in counts.most_common():
+            print(f"- {reason}: {count:,}")
+        for sample in invalid_ds.to_list():
+            sample["invalid_reason"] = (
+                f"{step.idx + 1}-{step.name}: Did not produce"
+                " valid_fields=True"
+            )
+            failed_fh.write(f"{json.dumps(sample, default=str)}\n")
+
+    return valid_ds
+
+
+def _merge_unrevised(
+    revised: Any, unrevised: Any, step: Step, task_prefix: str
+) -> Any:
+    """Combine revised rows with rows that had no feedback, in original order.
+
+    Unrevised rows get the original definition as revised definition, None
+    for the other revisor outputs, and `revisie-uitgevoerd=False`.
+
+    Args:
+        revised: Rows that were sent to the model (possibly empty).
+        unrevised: Rows with empty feedback.
+        step: The revisor step.
+        task_prefix: Column prefix of the step.
+
+    Returns:
+        One dataset without the temporary row index column.
+    """
+    renamer = step.post_field_renamer
+    fields = list(step.schema["properties"]) if step.schema else list(renamer)
+    new_def_col = renamer.get(REVISED_FIELD, REVISED_FIELD)
+
+    unrevised = unrevised.add_column(
+        "revisie-uitgevoerd", [False] * len(unrevised)
+    )
+    unrevised = unrevised.add_column(new_def_col, unrevised["definitie-v1"])
+    for field_name in fields:
+        col = renamer.get(field_name, field_name)
+        if col != new_def_col:
+            unrevised = unrevised.add_column(col, [None] * len(unrevised))
+
+    if len(revised) == 0:
+        merged = unrevised
+    else:
+        revised = revised.add_column(
+            "revisie-uitgevoerd", [True] * len(revised)
+        )
+        for col in revised.column_names:
+            if col not in unrevised.column_names:
+                fill = True if col == f"{task_prefix}valid_fields" else None
+                unrevised = unrevised.add_column(col, [fill] * len(unrevised))
+        unrevised = unrevised.select_columns(revised.column_names).cast(
+            revised.features
+        )
+        merged = concatenate_datasets([revised, unrevised])
+
+    return merged.sort(ROW_IDX_COL).remove_columns([ROW_IDX_COL])
+
+
 def run_generation(config: GenerateDefinitionsConfig) -> None:
     """Run the full generation workflow for the provided config."""
     set_seed(config.seed)
@@ -477,7 +586,6 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
     )
     failed_samples_fh = failed_samples_path.open("a", encoding="utf-8")
 
-    no_revision_ds = None
     for step in pipe:
         print(
             f"Step {step.idx + 1}: {step.name} ({step.task}) using model {step.model_name}"
@@ -505,27 +613,6 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
                     "  - Skipping step because output dir"
                     f" {step_done_dir} already exists and is non-empty."
                 )
-                # `feedback` steps add a `revisie-nodig` column to indicate whether revision is needed, so we separate out the no-revision samples to merge back later and avoid filtering them out in subsequent steps
-                if step.task != "feedback" and any(
-                    "revisie-nodig" in c for c in ds.column_names
-                ):
-                    new_no_revision_ds = ds.filter(
-                        lambda feedback: not bool(feedback),
-                        input_columns=["feedback"],
-                        num_proc=config.num_proc,
-                    )
-                    if no_revision_ds is None:
-                        no_revision_ds = new_no_revision_ds
-                    else:
-                        no_revision_ds = concatenate_datasets(
-                            [no_revision_ds, new_no_revision_ds]
-                        )
-
-                    ds = ds.filter(
-                        lambda feedback: bool(feedback),
-                        input_columns=["feedback"],
-                        num_proc=config.num_proc,
-                    )
                 continue
 
         step_done_dir.mkdir(parents=True, exist_ok=True)
@@ -557,64 +644,41 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
         else:
             validate_fn = None
 
-        default_run_kwargs = {
-            "output_dir": step_dir,
-            "dataset": ds,
-            "prompt_template": step.full_prompt_template,
-            "output_schema": step.schema,
-            "keep_columns": True,
-            "options": options,
-            "task_prefix": task_prefix,
-            "sort_by_length": True,
-            "num_retries_invalid": 3,
-            "validate_fn": validate_fn,
-            "system_message": step.system_message,
-        }
-        ds = anno.annotate_dataset(**default_run_kwargs)
-
-        num_before = len(ds)
-        filtered_ds = ds.filter(
-            lambda is_valid: is_valid,
-            input_columns=[f"{task_prefix}valid_fields"],
-            num_proc=config.num_proc,
-        )
-        num_after = len(filtered_ds)
-        if num_after == 0:
-            raise ValueError(
-                "All samples were filtered out after"
-                f" {step.name} with model {step.model_name}!"
-            )
-        if num_after < num_before:
-            invalid_ds = ds.filter(
-                lambda is_valid: not is_valid,
-                input_columns=[f"{task_prefix}valid_fields"],
+        unrevised_ds = None
+        if step.task == "revisor":
+            ds = ds.add_column(ROW_IDX_COL, list(range(len(ds))))
+            unrevised_ds = ds.filter(
+                lambda feedback: not bool(feedback),
+                input_columns=["feedback"],
                 num_proc=config.num_proc,
             )
-            print(
-                f"{num_before - num_after} samples were invalid after"
-                f" {step.name} with model {step.model_name}."
-                f" Dataset now has {num_after} samples remaining."
+            ds = ds.filter(
+                lambda feedback: bool(feedback),
+                input_columns=["feedback"],
+                num_proc=config.num_proc,
             )
-            print(
-                "A potential cause is that the model could not respond with"
-                " the full schema due to too-low max_completion_tokens in"
-                " client_run_kwargs. The stopping reasons for invalid"
-                " samples are below (valid='stop')."
-            )
-            counts = Counter(invalid_ds[f"{task_prefix}finish_reason"])
-            counts = dict(
-                sorted(counts.items(), key=lambda item: item[1], reverse=True)
-            )
-            for reason, count in counts.items():
-                print(f"- {reason}: {count:,}")
-            for sample in invalid_ds.to_list():
-                sample["invalid_reason"] = (
-                    f"{step.idx + 1}-{step.name}: Did not produce"
-                    " valid_fields=True"
-                )
-                failed_samples_fh.write(f"{json.dumps(sample, default=str)}\n")
 
-        ds = filtered_ds.rename_columns(step.post_field_renamer)
+        if len(ds) > 0:
+            ds = anno.annotate_dataset(
+                output_dir=step_dir,
+                dataset=ds,
+                prompt_template=step.full_prompt_template,
+                output_schema=step.schema,
+                keep_columns=True,
+                options=options,
+                task_prefix=task_prefix,
+                sort_by_length=True,
+                num_retries_invalid=3,
+                validate_fn=validate_fn,
+                system_message=step.system_message,
+            )
+            ds = _drop_invalid(
+                ds, step, task_prefix, config.num_proc, failed_samples_fh
+            )
+            ds = ds.rename_columns(step.post_field_renamer)
+
+        if step.task == "revisor":
+            ds = _merge_unrevised(ds, unrevised_ds, step, task_prefix)
 
         if step.task == "feedback" and step.last_of_task:
             ds = ds.map(
@@ -640,13 +704,6 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
         ) and (step.last_of_task and "ranker" in pipe):
             ds = ds.map(shuffle_definitions, num_proc=config.num_proc)
 
-        if no_revision_ds is not None:
-            new_cols = set(ds.column_names) - set(no_revision_ds.column_names)
-            for col in new_cols:
-                no_revision_ds = no_revision_ds.add_column(
-                    col, [None] * len(no_revision_ds)
-                )
-
         print(
             f"Done step {step.idx + 1}: {step.name}, saving to {step_done_dir}"
         )
@@ -655,11 +712,6 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
     failed_samples_fh.close()
     if anno is not None:
         anno.destroy()
-    if no_revision_ds is not None:
-        print(
-            f"Merging back {len(no_revision_ds)} samples that did not require revision."
-        )
-        ds = concatenate_datasets([ds, no_revision_ds])
 
     ds.save_to_disk(config.root_output_dir.joinpath("full_process_done"))
 

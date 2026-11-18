@@ -285,6 +285,9 @@ class _RunDataset:
         return list(self.rows[0].keys()) if self.rows else []
 
     def load_from_disk(self, path):
+        rows_file = Path(path) / "rows.json"
+        if rows_file.exists():
+            return _RunDataset(json.loads(rows_file.read_text("utf-8")))
         return self
 
     def filter(self, fn, input_columns=None, num_proc=None):
@@ -321,6 +324,27 @@ class _RunDataset:
             rows.append(payload)
         return _RunDataset(rows)
 
+    @property
+    def features(self):
+        return self.column_names
+
+    def select_columns(self, columns):
+        return _RunDataset([{c: row[c] for c in columns} for row in self.rows])
+
+    def cast(self, features):
+        return self
+
+    def sort(self, column):
+        return _RunDataset(sorted(self.rows, key=lambda row: row[column]))
+
+    def remove_columns(self, columns):
+        return _RunDataset(
+            [
+                {k: v for k, v in row.items() if k not in columns}
+                for row in self.rows
+            ]
+        )
+
     def to_list(self):
         return [dict(row) for row in self.rows]
 
@@ -328,6 +352,9 @@ class _RunDataset:
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
         path.joinpath(".saved").write_text("1", encoding="utf-8")
+        path.joinpath("rows.json").write_text(
+            json.dumps(self.rows), encoding="utf-8"
+        )
 
     def push_to_hub(self, hub_id, private=True):
         _RunDataset.pushed = (hub_id, private)
@@ -731,36 +758,121 @@ def test_run_generation_overwrite_discards_existing_output(
     assert not (done / "stale.txt").exists()
 
 
-def test_run_generation_resumed_step_merges_back_no_revision_rows(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    scripted: type[_ScriptedAnnotator],
-) -> None:
-    ds = _RunDataset(
-        [
-            {"id": 0, "revisie-nodig_a": True, "feedback": "fix this"},
-            {"id": 1, "revisie-nodig_a": False, "feedback": ""},
-        ]
-    )
-    steps = [
+REVISOR_SCHEMA = {
+    "properties": {"samenvatting-feedback": {}, "nieuwe-definitie": {}}
+}
+
+
+def _revisor_pipeline() -> list:
+    return [
         _make_step(name="d", post_field_renamer={}),
-        _make_step(name="r", task="revisor", post_field_renamer={}),
+        _make_step(
+            name="r",
+            task="revisor",
+            schema=REVISOR_SCHEMA,
+            post_field_renamer={"nieuwe-definitie": "definitie-v2"},
+        ),
     ]
-    _patch_inputs(monkeypatch, ds, steps)
-    done = tmp_path / "2-revisor-r" / "done"
-    done.mkdir(parents=True)
-    (done / ".saved").write_text("1", encoding="utf-8")
+
+
+def _revisor_rows() -> list[dict]:
+    return [
+        {"id": i, "definitie-v1": f"v1-{i}", "feedback": fb}
+        for i, fb in enumerate(["fix", "", "fix", ""])
+    ]
+
+
+def _run_and_capture(
+    monkeypatch: pytest.MonkeyPatch, out_dir: Path, steps: list
+) -> list[dict]:
     pushed: list[_RunDataset] = []
     monkeypatch.setattr(
         _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
     )
+    _patch_inputs(monkeypatch, _RunDataset(_revisor_rows()), steps)
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=out_dir, hub_id="o/x")
+    )
+    return pushed[0].rows
+
+
+def test_revisor_sends_only_rows_with_feedback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    scripted.new_columns = {
+        "nieuwe-definitie": "revised",
+        "samenvatting-feedback": "sum",
+    }
+    sent: list[list[int]] = []
+    original = scripted.annotate_dataset
+
+    def spy(self, **kwargs):
+        if kwargs["task_prefix"].startswith("2-"):
+            sent.append(kwargs["dataset"]["id"])
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(scripted, "annotate_dataset", spy)
+
+    rows = _run_and_capture(monkeypatch, tmp_path, _revisor_pipeline())
+
+    assert sent == [[0, 2]]
+    assert [r["id"] for r in rows] == [0, 1, 2, 3]
+    assert [r["revisie-uitgevoerd"] for r in rows] == [True, False] * 2
+    assert [r["definitie-v2"] for r in rows] == [
+        "revised",
+        "v1-1",
+        "revised",
+        "v1-3",
+    ]
+    assert rows[1]["samenvatting-feedback"] is None
+    assert rows[1]["2-r_valid_fields"] is True
+    assert "__row_idx" not in rows[0]
+
+
+def test_resumed_run_equals_fresh_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    scripted.new_columns = {
+        "nieuwe-definitie": "revised",
+        "samenvatting-feedback": "sum",
+    }
+    fresh = _run_and_capture(monkeypatch, tmp_path, _revisor_pipeline())
+    calls_after_fresh = scripted.num_calls
+
+    resumed = _run_and_capture(monkeypatch, tmp_path, _revisor_pipeline())
+
+    assert scripted.num_calls == calls_after_fresh
+    assert resumed == fresh
+    assert len(resumed) == 4
+
+
+def test_revisor_without_feedback_skips_the_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    rows = _revisor_rows()
+    for row in rows:
+        row["feedback"] = ""
+    pushed: list[_RunDataset] = []
+    monkeypatch.setattr(
+        _RunDataset, "push_to_hub", lambda self, *a, **k: pushed.append(self)
+    )
+    _patch_inputs(monkeypatch, _RunDataset(rows), _revisor_pipeline())
 
     dg.run_generation(
         dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id="o/x")
     )
 
     assert scripted.num_calls == 1
-    assert [r["id"] for r in pushed[0].rows] == [0, 1]
+    assert [r["definitie-v2"] for r in pushed[0].rows] == [
+        f"v1-{i}" for i in range(4)
+    ]
+    assert not any(r["revisie-uitgevoerd"] for r in pushed[0].rows)
 
 
 def test_run_generation_splits_judge_scores(
