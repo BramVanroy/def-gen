@@ -13,7 +13,7 @@ from def_gen.analysis.load import (
     scores_from_run,
 )
 from def_gen.definition_generation import JUDGE_FIELDS
-from tests.conftest import make_step, write_run
+from tests.conftest import make_step, simulate_study, write_run
 
 
 GEMMA = "RedHatAI/gemma-3-27b-it-FP8-dynamic"
@@ -146,7 +146,9 @@ def test_combine_runs_keeps_common_items(tmp_path) -> None:
 
     assert set(data.scores["item"]) == {1, 2, 3}
     assert set(data.scores["system"]) == {"anw", "gemma-3-27b-it-FP8-dynamic"}
-    anw_cov = data.coverage[data.coverage["group"] == "anw/Qwen3.6-27B-FP8"]
+    anw_cov = data.coverage[
+        data.coverage["group"] == "anw/Qwen3.6-27B-FP8/betekenis"
+    ]
     assert anw_cov[["n_items", "n_kept", "n_dropped"]].iloc[0].tolist() == [
         4,
         3,
@@ -304,3 +306,20 @@ def test_conflicting_definitions_are_rejected(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="definition rows"):
         combine_runs([run, other])
+
+
+def test_combine_runs_keeps_separate_item_sets_per_table() -> None:
+    sim = simulate_study(num_items=10)
+    data = AnalysisData(
+        scores=sim.scores[sim.scores["item"] < 4],
+        pairs=sim.pairs,
+        definitions=sim.definitions,
+        attrition=sim.attrition,
+    )
+
+    combined = combine_runs([data])
+
+    assert set(combined.pairs["item"]) == set(range(10))
+    assert set(combined.scores["item"]) == set(range(4))
+    dropped = combined.coverage.groupby("table")["n_dropped"].max()
+    assert dropped.to_dict() == {"pairs": 0, "scores": 0}

@@ -29,9 +29,11 @@ def self_preference(
 
     Returns:
         One row per writer and judge with writer_family, judge_family,
-        same_family, n_items (combined pairs), win_rate (combined outcome
-        "a"), and mean_score_diff (writer minus reference, averaged over the
-        paired items and all criteria).
+        same_family, n_items (items with combined pairs), win_rate (combined
+        outcome "a", over the pair items) and mean_score_diff (writer minus
+        reference, averaged over the scored items and all criteria). The pair
+        items and the scored items are separate sets, and the scored items
+        can be a subset of the pair items.
     """
     combined = outcome_per_item(pairs[pairs["system_b"] == reference])
     wins = (
@@ -86,7 +88,8 @@ def length_bias(
 
     Args:
         pairs: The pairs table of `AnalysisData`.
-        definitions: The definitions table of `AnalysisData`.
+        definitions: The definitions table of `AnalysisData`. Only the pair
+            items are used.
         reference: The system the writers are compared with.
 
     Returns:

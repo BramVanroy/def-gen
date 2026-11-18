@@ -26,7 +26,9 @@ separate comparisons and are shifted so that ANW is 0. choix has no tie \
 model, so ties are counted separately.
 - Score differences are writer minus ANW per item. The Wilcoxon test drops \
 zero differences and its p-values are Holm-adjusted per judge.
-- Only items present in every comparison are used; see the coverage table.
+- The scores use the items that every score group has, and the pairs use the \
+items that every pair group has. The two item sets can differ; see the \
+coverage table.
 """
 
 
@@ -169,7 +171,7 @@ def render_report(
         _section(
             "Data",
             "Items per comparison before and after the restriction to the"
-            " common items:\n\n"
+            " common items of their table:\n\n"
             + markdown_table(coverage)
             + "\n\nInvalid outputs per step:\n\n"
             + markdown_table(

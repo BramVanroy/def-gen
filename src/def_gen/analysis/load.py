@@ -54,9 +54,10 @@ class AnalysisData:
         definitions: One row per item and system with the definition text.
         attrition: One row per step with run, step, task, model, n_in,
             n_valid, n_invalid and invalid_finish_reasons (a JSON string).
-        coverage: One row per system and judge (scores) or system pair,
-            judge and rotation (pairs) with the number of items before and
-            after the restriction to the common items.
+        coverage: One row per group with table ("scores" or "pairs"), group,
+            n_items, n_kept and n_dropped. The groups are system, judge and
+            criterion (scores) or system pair, judge and rotation (pairs).
+            The restriction to common items is made within each table.
     """
 
     scores: pd.DataFrame
@@ -450,24 +451,26 @@ def _check_unique(df: pd.DataFrame, keys: list[str], name: str) -> None:
 
 
 def combine_runs(runs: list[AnalysisData]) -> AnalysisData:
-    """Combine runs and keep only the items that every comparison has.
+    """Combine runs and keep the common items of each table separately.
 
-    Each score group (system, judge) and pair group (system_a, system_b,
-    judge, rotation) defines a set of items. Only the intersection of all
-    these sets is kept, so every comparison uses the same items. The
-    coverage table records how many items each group lost.
+    Each score group (system, judge, criterion) and pair group (system_a,
+    system_b, judge, rotation) defines a set of items. The scores keep the
+    items that every score group has, and the pairs keep the items that every
+    pair group has. The two item sets can differ, for example 4 scored items
+    next to 10 ranked items. The coverage table records, per group, how many
+    items were kept and dropped within its own table.
 
     Args:
         runs: Tables from `read_run`, for example two writer runs and one
-            run in which only the ANW definitions are judged.
+            run that judges the definitions of all systems.
 
     Returns:
-        The combined tables restricted to the common items.
+        The combined tables. `definitions` holds the items of either table.
 
     Raises:
         ValueError: If two runs hold the same score or pair, if the same item
-            and system have different definition texts, or if no item is
-            common to all groups.
+            and system have different definition texts, if there are no
+            scores and no pairs, or if the groups of a table share no item.
     """
     scores = pd.concat([r.scores for r in runs], ignore_index=True)
     scores["score"] = pd.to_numeric(scores["score"])
@@ -480,38 +483,45 @@ def combine_runs(runs: list[AnalysisData]) -> AnalysisData:
     _check_unique(pairs, PAIR_KEYS, "pair")
     _check_unique(definitions, ["item", "system"], "definition")
 
-    groups = [
-        ("scores", keys, set(group["item"]))
-        for keys, group in scores.groupby(["system", "judge"])
-    ]
-    groups += [
-        ("pairs", keys, set(group["item"]))
-        for keys, group in pairs.groupby(
-            ["system_a", "system_b", "judge", "rotation"]
-        )
-    ]
-    if not groups:
+    if scores.empty and pairs.empty:
         raise ValueError("The runs contain no scores and no pairs.")
-    common = set.intersection(*(items for _, _, items in groups))
-    if not common:
-        raise ValueError("No item is present in every comparison.")
 
-    coverage = pd.DataFrame(
-        [
+    coverage_rows = []
+    common: dict[str, set] = {}
+    for table, df, keys in (
+        ("scores", scores, ["system", "judge", "criterion"]),
+        ("pairs", pairs, ["system_a", "system_b", "judge", "rotation"]),
+    ):
+        groups = [
+            (group_keys, set(group["item"]))
+            for group_keys, group in df.groupby(keys)
+        ]
+        if not groups:
+            common[table] = set()
+            continue
+        common[table] = set.intersection(*(items for _, items in groups))
+        if not common[table]:
+            raise ValueError(f"No item is present in every {table} group.")
+        coverage_rows += [
             {
                 "table": table,
-                "group": "/".join(str(k) for k in keys),
+                "group": "/".join(str(k) for k in group_keys),
                 "n_items": len(items),
-                "n_kept": len(items & common),
-                "n_dropped": len(items - common),
+                "n_kept": len(items & common[table]),
+                "n_dropped": len(items - common[table]),
             }
-            for table, keys, items in groups
+            for group_keys, items in groups
         ]
-    )
+    coverage = pd.DataFrame(coverage_rows)
+    keep = common["scores"] | common["pairs"]
     return AnalysisData(
-        scores=scores[scores["item"].isin(common)].reset_index(drop=True),
-        pairs=pairs[pairs["item"].isin(common)].reset_index(drop=True),
-        definitions=definitions[definitions["item"].isin(common)].reset_index(
+        scores=scores[scores["item"].isin(common["scores"])].reset_index(
+            drop=True
+        ),
+        pairs=pairs[pairs["item"].isin(common["pairs"])].reset_index(
+            drop=True
+        ),
+        definitions=definitions[definitions["item"].isin(keep)].reset_index(
             drop=True
         ),
         attrition=attrition,

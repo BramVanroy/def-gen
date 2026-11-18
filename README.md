@@ -200,6 +200,12 @@ uv run python scripts/analyze.py \
     --output_dir outputs/study/analysis
 ```
 
+The analysis keeps two item sets. The pair analyses use the items that every
+ranker group has (1,000 items). The score analyses use the items that every
+score group has (up to 300 items). `coverage.csv` lists the items kept and
+dropped per group and table. `self_preference` uses both sets: its win rate
+comes from the pair items and its score difference from the scored items.
+
 The scores run has three judge steps per judge model, one for each of the
 three systems: the definitions of both writers and the ANW definition
 (`definition_column` is `definitie-<writer>` or `originele-definitie`). Step

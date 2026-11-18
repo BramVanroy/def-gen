@@ -144,8 +144,10 @@ def test_tables_from_real_pipeline_runs(study_dirs: dict[str, Path]) -> None:
 
     scored = {f"pid-{i}" for i in range(NUM_SCORED)} - {INVALID_ANW_ITEM}
     assert set(data.scores["item"]) == scored
-    assert set(data.pairs["item"]) == scored
-    assert data.coverage["n_dropped"].max() == NUM_ITEMS - len(scored)
+    assert set(data.pairs["item"]) == {f"pid-{i}" for i in range(NUM_ITEMS)}
+    assert len(scored) < NUM_ITEMS
+    dropped = data.coverage.groupby("table")["n_dropped"].max()
+    assert dropped.to_dict() == {"pairs": 0, "scores": 0}
     assert set(data.scores["system"]) == {"anw", *WRITERS}
     assert set(data.scores["judge"]) == {
         "Qwen3.8-27B-FP8",
@@ -168,7 +170,7 @@ def test_tables_from_real_pipeline_runs(study_dirs: dict[str, Path]) -> None:
     }
     assert (
         data.pairs.groupby(["system_a", "system_b"]).size()
-        == len(scored) * 3 * 2
+        == NUM_ITEMS * 3 * 2
     ).all()
     assert set(data.definitions["system"]) == {"anw", *WRITERS}
 

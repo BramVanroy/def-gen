@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `combine_runs` keeps the common items of the scores and of the pairs separately, so the ranked items are not cut to the scored subset. The coverage table has one row per group and table.
 - Judge criteria use an anchored 1-5 scale instead of 0-100.
 - One judge prompt for all definition columns (`instructions/judge`).
 - `num_samples` also applies to datasets from `from_hub_id`.
