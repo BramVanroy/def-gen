@@ -8,7 +8,7 @@ from typing import ClassVar
 import llm_annotator
 import numpy as np
 import pytest
-from datasets import Dataset
+from datasets import Dataset, DatasetDict
 from pydantic import ValidationError
 
 from def_gen import definition_generation as dg
@@ -1115,3 +1115,34 @@ def test_run_generation_drops_position_columns_and_keeps_order(
     out = pushed[0].rows[0]
     assert out["volgorde_rk"] == out["shuffle-order"][::-1]
     assert not any(c.startswith("positie-definitie-") for c in out)
+
+
+def test_load_source_dataset_from_local_dict(tmp_path: Path) -> None:
+    DatasetDict(
+        {
+            "dev": Dataset.from_list([{"id": 0}]),
+            "eval": Dataset.from_list([{"id": 1}, {"id": 2}]),
+        }
+    ).save_to_disk(tmp_path)
+
+    assert len(dg.load_source_dataset(str(tmp_path), "eval")) == 2
+    assert dg.load_source_dataset(str(tmp_path), "dev")[0]["id"] == 0
+
+
+def test_load_source_dataset_from_local_dataset(tmp_path: Path) -> None:
+    Dataset.from_list([{"id": 0}, {"id": 1}]).save_to_disk(tmp_path)
+
+    assert len(dg.load_source_dataset(str(tmp_path))) == 2
+
+
+def test_load_source_dataset_from_hub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hub = {
+        "train": Dataset.from_list([{"id": 0}]),
+        "test": Dataset.from_list([{"id": 1}, {"id": 2}]),
+    }
+    monkeypatch.setattr(dg, "load_dataset", lambda hub_id: hub)
+
+    assert len(dg.load_source_dataset("o/hub")) == 1
+    assert len(dg.load_source_dataset("o/hub", "test")) == 2
