@@ -37,7 +37,7 @@ class Step:
     schema: str | None = None
     system_message: str | None = None
     idx: int = -1
-    last_of_task: bool = None
+    last_of_task: bool = False
     post_field_renamer: dict[str, str] = field(default_factory=dict)
     client_init_kwargs: dict = field(default_factory=dict)
     client_run_kwargs: dict = field(default_factory=dict)
@@ -134,56 +134,24 @@ class Pipeline:
         if any(s.task not in Task for s in self.steps):
             raise ValueError(f"Step tasks must be one of {list(Task)}!")
 
-        saw_definer = False
+        if not self.steps or self.steps[0].task != Task.definer:
+            raise ValueError("Pipeline must start with a definer step!")
+        if any(s.task == Task.definer for s in self.steps[1:]):
+            raise ValueError("Pipeline can only contain one definer step!")
+
         saw_feedback = False
         for step in self.steps:
-            step_idx = step.idx
-            if step.task == "definer":
-                if saw_definer:
-                    raise ValueError(
-                        "Pipeline can only contain one definer step!"
-                    )
-                saw_definer = True
-                if step_idx != 0:
-                    raise ValueError("Definer step must be the first step!")
-            elif step.task == "feedback":
-                if not saw_definer:
-                    raise ValueError(
-                        "Feedback step must be preceded by definer somewhere!"
-                    )
+            if step.task == Task.feedback:
                 saw_feedback = True
-            elif step.task == "revisor":
-                if not saw_feedback:
-                    raise ValueError(
-                        "Revisor step must be preceded by feedback somewhere!"
-                    )
-                if not saw_definer:
-                    raise ValueError(
-                        "Revisor step must be preceded by definer somewhere!"
-                    )
-            elif step.task == "judge" and not saw_definer:
+            elif step.task == Task.revisor and not saw_feedback:
                 raise ValueError(
-                    "Judge step must be preceded by definer somewhere!"
-                )
-            elif step.task == "ranker" and not saw_definer:
-                raise ValueError(
-                    "Ranker step must be preceded by definer somewhere!"
+                    "Revisor step must be preceded by feedback somewhere!"
                 )
 
-        if not saw_definer:
-            raise ValueError(
-                "Pipeline must contain a definer step at the start!"
-            )
-
-        done_tasks = set(Task)
+        later_tasks: set[str] = set()
         for step in reversed(self.steps):
-            if step.task in done_tasks:
-                done_tasks.remove(step.task)
-                step.last_of_task = True
-            else:
-                step.last_of_task = False
-            if not done_tasks:
-                break
+            step.last_of_task = step.task not in later_tasks
+            later_tasks.add(step.task)
 
     def to_dict(self) -> dict:
         """Serialize all steps to a dict for JSON output."""
