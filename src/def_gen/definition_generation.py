@@ -452,16 +452,19 @@ ROW_IDX_COL = "__row_idx"
 
 
 def _drop_invalid(
-    ds: Any, step: Step, task_prefix: str, num_proc: int, failed_fh: Any
+    ds: Any, step: Step, step_dir: Path, task_prefix: str, num_proc: int
 ) -> Any:
-    """Remove rows with `valid_fields=False` and log them to `failed_fh`.
+    """Remove rows with `valid_fields=False` and record the attrition.
+
+    Writes `attrition.json` and `failed_samples.jsonl` into `step_dir`. A rerun
+    of the step overwrites both files.
 
     Args:
         ds: Annotated dataset with the `valid_fields` and `finish_reason` columns.
         step: The step that produced `ds`.
+        step_dir: Output directory of the step.
         task_prefix: Column prefix of the step.
         num_proc: Number of workers for dataset operations.
-        failed_fh: Open file that receives the invalid rows as JSON lines.
 
     Returns:
         The dataset with valid rows only.
@@ -473,17 +476,44 @@ def _drop_invalid(
     valid_ds = ds.filter(
         lambda is_valid: is_valid, input_columns=[valid_col], num_proc=num_proc
     )
+    invalid_ds = ds.filter(
+        lambda is_valid: not is_valid,
+        input_columns=[valid_col],
+        num_proc=num_proc,
+    )
+    counts = dict(
+        Counter(invalid_ds[f"{task_prefix}finish_reason"]).most_common()
+    )
+
+    step_dir.mkdir(parents=True, exist_ok=True)
+    step_dir.joinpath("attrition.json").write_text(
+        json.dumps(
+            {
+                "n_in": len(ds),
+                "n_valid": len(valid_ds),
+                "n_invalid": len(invalid_ds),
+                "invalid_finish_reasons": counts,
+            },
+            indent=4,
+        ),
+        encoding="utf-8",
+    )
+    with step_dir.joinpath("failed_samples.jsonl").open(
+        "w", encoding="utf-8"
+    ) as fh:
+        for sample in invalid_ds.to_list():
+            sample["invalid_reason"] = (
+                f"{step.idx + 1}-{step.name}: Did not produce"
+                " valid_fields=True"
+            )
+            fh.write(f"{json.dumps(sample, default=str)}\n")
+
     if len(valid_ds) == 0:
         raise ValueError(
             "All samples were filtered out after"
             f" {step.name} with model {step.model_name}!"
         )
-    if len(valid_ds) < len(ds):
-        invalid_ds = ds.filter(
-            lambda is_valid: not is_valid,
-            input_columns=[valid_col],
-            num_proc=num_proc,
-        )
+    if len(invalid_ds) > 0:
         print(
             f"{len(invalid_ds)} samples were invalid after"
             f" {step.name} with model {step.model_name}."
@@ -495,15 +525,8 @@ def _drop_invalid(
             " client_run_kwargs. The stopping reasons for invalid"
             " samples are below (valid='stop')."
         )
-        counts = Counter(invalid_ds[f"{task_prefix}finish_reason"])
-        for reason, count in counts.most_common():
+        for reason, count in counts.items():
             print(f"- {reason}: {count:,}")
-        for sample in invalid_ds.to_list():
-            sample["invalid_reason"] = (
-                f"{step.idx + 1}-{step.name}: Did not produce"
-                " valid_fields=True"
-            )
-            failed_fh.write(f"{json.dumps(sample, default=str)}\n")
 
     return valid_ds
 
@@ -580,11 +603,6 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
     feedback_cols: dict[str, list[str]] = {}
     prev_client_key = None
     anno = None
-
-    failed_samples_path = config.root_output_dir.joinpath(
-        "failed_samples.jsonl"
-    )
-    failed_samples_fh = failed_samples_path.open("a", encoding="utf-8")
 
     for step in pipe:
         print(
@@ -673,7 +691,7 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
                 system_message=step.system_message,
             )
             ds = _drop_invalid(
-                ds, step, task_prefix, config.num_proc, failed_samples_fh
+                ds, step, step_dir, task_prefix, config.num_proc
             )
             ds = ds.rename_columns(step.post_field_renamer)
 
@@ -709,7 +727,6 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
         )
         ds.save_to_disk(step_done_dir)
 
-    failed_samples_fh.close()
     if anno is not None:
         anno.destroy()
 

@@ -689,13 +689,44 @@ def test_run_generation_writes_invalid_samples_to_failed_file(
         dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
     )
 
-    lines = (tmp_path / "failed_samples.jsonl").read_text().splitlines()
+    step_dir = tmp_path / "1-definer-d"
+    assert not (tmp_path / "failed_samples.jsonl").exists()
+    lines = (step_dir / "failed_samples.jsonl").read_text().splitlines()
     failed = [json.loads(line) for line in lines]
     assert [f["id"] for f in failed] == [1]
     assert failed[0]["1-d_finish_reason"] == "length"
     assert failed[0]["invalid_reason"] == (
         "1-d: Did not produce valid_fields=True"
     )
+    assert json.loads((step_dir / "attrition.json").read_text()) == {
+        "n_in": 3,
+        "n_valid": 2,
+        "n_invalid": 1,
+        "invalid_finish_reasons": {"length": 1},
+    }
+
+
+def test_failed_samples_file_is_overwritten_on_rerun(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    step_dir = tmp_path / "1-definer-d"
+    step_dir.mkdir()
+    (step_dir / "failed_samples.jsonl").write_text('{"stale": 1}\n')
+    _patch_inputs(
+        monkeypatch,
+        _RunDataset([{"id": 0}]),
+        [_make_step(name="d", post_field_renamer={})],
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
+    )
+
+    assert (step_dir / "failed_samples.jsonl").read_text() == ""
+    attrition = json.loads((step_dir / "attrition.json").read_text())
+    assert attrition["n_invalid"] == 0
 
 
 def test_run_generation_raises_when_all_samples_invalid(
