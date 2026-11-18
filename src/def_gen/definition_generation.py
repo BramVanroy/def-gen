@@ -48,6 +48,8 @@ REVISED_FIELD = "nieuwe-definitie"
 
 DEFAULT_DATA_PATH = ROOT.joinpath("data/anw_lemma_definitions.jsonl")
 
+PAID_PROVIDERS = ("openai", "anthropic")
+
 CLIENT_TYPE_CHOICES = ["openai", "anthropic", "vllm", "vllm-offline"]
 
 
@@ -77,6 +79,11 @@ class PipelineStepConfig(BaseModel):
             is shown as `positie-definitie-i`. Running rotations 0 to n-1 in
             separate ranker steps gives a cyclic Latin square over the
             positions. Must be smaller than the number of candidates.
+        candidate_columns: Ranker steps only. Two or three distinct columns
+            that hold the candidate definitions. The step then builds its own
+            base order per item (a shuffle seeded by `betekenis_pid` and the
+            column names) instead of using `shuffle-order`, and needs no
+            definer step.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -97,6 +104,7 @@ class PipelineStepConfig(BaseModel):
     post_field_renamer: dict[str, str] = Field(default_factory=dict)
     definition_column: str | None = None
     order_rotation: int = Field(default=0, ge=0)
+    candidate_columns: list[str] | None = None
 
     @field_validator("file_directory", mode="before")
     @classmethod
@@ -133,6 +141,7 @@ class PipelineStepConfig(BaseModel):
             client_run_kwargs=self.client_run_kwargs,
             definition_column=self.definition_column,
             order_rotation=self.order_rotation,
+            candidate_columns=self.candidate_columns,
         )
 
 
@@ -155,6 +164,9 @@ class GenerateDefinitionsConfig(BaseModel):
         workflow: Workflow preset for whether revision is included.
         steps: Optional explicit pipeline steps.
         seed: Random seed used for deterministic data transforms.
+        allow_paid_api: Whether steps with the provider `openai` or
+            `anthropic` may run. If False, `run_generation` raises before
+            any client is created.
     """
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
@@ -170,6 +182,7 @@ class GenerateDefinitionsConfig(BaseModel):
     hub_id: str | None = "BramVanroy/anw-defgen-{num_samples}"
     steps: list[PipelineStepConfig] | None = None
     seed: int = 42
+    allow_paid_api: bool = False
 
     @field_validator("root_output_dir", mode="before")
     @classmethod
@@ -488,7 +501,18 @@ def check_rank_validity(
 
 
 def build_pipeline(config: GenerateDefinitionsConfig) -> Pipeline:
-    """Build a pipeline for the selected workflow configuration."""
+    """Build a pipeline for the selected workflow configuration.
+
+    Raises:
+        ValueError: If a step uses a paid provider and `allow_paid_api` is
+            False.
+    """
+    paid = [s.name for s in config.steps or [] if s.provider in PAID_PROVIDERS]
+    if paid and not config.allow_paid_api:
+        raise ValueError(
+            f"Steps {paid} use a paid API provider. Set allow_paid_api to"
+            " true to run them."
+        )
     if config.steps:
         return Pipeline(
             [step_config.to_step() for step_config in config.steps]
@@ -632,14 +656,35 @@ def _merge_unrevised(
     return merged.sort(ROW_IDX_COL).remove_columns([ROW_IDX_COL])
 
 
-def _add_ranker_positions(ds: Any, step: Step, num_proc: int) -> Any:
-    """Fill `positie-definitie-i` columns from `shuffle-order` rotated left.
+def candidate_order(sample: dict[str, Any], columns: list[str]) -> list[str]:
+    """Shuffle candidate columns with a seed from the item id and the names.
 
-    Position i shows the candidate `rotated[i - 1]`. The used order is stored
-    in `volgorde_<step.name>`.
+    The order is the same on every call and does not depend on other columns.
 
     Args:
-        ds: Dataset with `shuffle-order` and the candidate columns.
+        sample: Row with `betekenis_pid`.
+        columns: Candidate column names.
+
+    Returns:
+        The shuffled column names.
+    """
+    key = f"{sample['betekenis_pid']}|{'|'.join(sorted(columns))}"
+    seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest(), 16) % 2**32
+    order = sorted(columns)
+    Random(seed).shuffle(order)
+    return order
+
+
+def _add_ranker_positions(ds: Any, step: Step, num_proc: int) -> Any:
+    """Fill `positie-definitie-i` columns from the base order rotated left.
+
+    The base order is `shuffle-order`, or `candidate_order` of
+    `step.candidate_columns` when set. Position i shows the candidate
+    `rotated[i - 1]`. The used order is stored in `volgorde_<step.name>`.
+
+    Args:
+        ds: Dataset with the candidate columns and `shuffle-order` (not
+            needed with `candidate_columns`).
         step: The ranker step.
         num_proc: Number of workers for dataset operations.
 
@@ -650,7 +695,11 @@ def _add_ranker_positions(ds: Any, step: Step, num_proc: int) -> Any:
         ValueError: If the rotation is not smaller than the number of
             candidates.
     """
-    num_candidates = len(ds[0]["shuffle-order"])
+    num_candidates = (
+        len(step.candidate_columns)
+        if step.candidate_columns
+        else len(ds[0]["shuffle-order"])
+    )
     if not 0 <= step.order_rotation < num_candidates:
         raise ValueError(
             f"order_rotation {step.order_rotation} of step {step.name!r}"
@@ -658,7 +707,11 @@ def _add_ranker_positions(ds: Any, step: Step, num_proc: int) -> Any:
         )
 
     def add_positions(sample: dict[str, Any]) -> dict[str, Any]:
-        order = sample["shuffle-order"]
+        order = (
+            candidate_order(sample, step.candidate_columns)
+            if step.candidate_columns
+            else sample["shuffle-order"]
+        )
         rotated = order[step.order_rotation :] + order[: step.order_rotation]
         out = {
             f"{POSITION_PREFIX}{i}": sample[source]
@@ -672,6 +725,7 @@ def _add_ranker_positions(ds: Any, step: Step, num_proc: int) -> Any:
 
 def run_generation(config: GenerateDefinitionsConfig) -> None:
     """Run the full generation workflow for the provided config."""
+    pipe = build_pipeline(config)
     set_seed(config.seed)
 
     if config.from_hub_id:
@@ -685,7 +739,6 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
             min_num_examples=config.min_num_examples,
             num_proc=config.num_proc,
         )
-    pipe = build_pipeline(config)
 
     config.root_output_dir.mkdir(parents=True, exist_ok=True)
     with config.root_output_dir.joinpath("pipeline.json").open(

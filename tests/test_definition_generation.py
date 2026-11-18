@@ -30,6 +30,7 @@ def _make_step(**kwargs):
         "system_message": None,
         "last_of_task": True,
         "order_rotation": 0,
+        "candidate_columns": None,
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -255,6 +256,7 @@ def test_check_rank_validity() -> None:
 
 def test_build_pipeline_uses_custom_steps() -> None:
     config = dg.GenerateDefinitionsConfig(
+        allow_paid_api=True,
         steps=[
             dg.PipelineStepConfig(
                 name="custom-definer",
@@ -266,7 +268,7 @@ def test_build_pipeline_uses_custom_steps() -> None:
                 client_run_kwargs={"max_completion_tokens": 42},
                 post_field_renamer={"definitie": "definitie-v1"},
             )
-        ]
+        ],
     )
 
     pipe = dg.build_pipeline(config)
@@ -1090,6 +1092,102 @@ def test_ranker_rotation_must_be_below_candidate_count() -> None:
         dg._add_ranker_positions(_candidate_ds(), step, num_proc=1)
 
 
+def _h2h_ds(n: int = 200) -> Dataset:
+    return Dataset.from_list(
+        [
+            {"betekenis_pid": f"p{i}", "da": f"a{i}", "db": f"b{i}"}
+            for i in range(n)
+        ]
+    )
+
+
+def test_candidate_order_is_stable_and_column_order_independent() -> None:
+    sample = {"betekenis_pid": "p1", "da": "x", "db": "y"}
+
+    first = dg.candidate_order(sample, ["da", "db"])
+
+    assert dg.candidate_order(sample, ["da", "db"]) == first
+    assert dg.candidate_order(sample, ["db", "da"]) == first
+    assert dg.candidate_order({**sample, "da": "other"}, ["da", "db"]) == first
+
+
+def test_ranker_candidate_columns_rotation_swaps_two_way_order() -> None:
+    cols = ["da", "db"]
+    r0 = dg._add_ranker_positions(
+        _h2h_ds(10),
+        _make_step(name="r0", task="ranker", candidate_columns=cols),
+        num_proc=1,
+    )
+    r1 = dg._add_ranker_positions(
+        _h2h_ds(10),
+        _make_step(
+            name="r1", task="ranker", candidate_columns=cols, order_rotation=1
+        ),
+        num_proc=1,
+    )
+
+    for a, b in zip(r0, r1, strict=True):
+        assert a["volgorde_r0"] == b["volgorde_r1"][::-1]
+        assert a["positie-definitie-1"] == b["positie-definitie-2"]
+        assert a["positie-definitie-1"] == a[a["volgorde_r0"][0]]
+        assert "positie-definitie-3" not in a
+
+
+def test_ranker_candidate_columns_order_is_balanced() -> None:
+    out = dg._add_ranker_positions(
+        _h2h_ds(400),
+        _make_step(name="r", task="ranker", candidate_columns=["da", "db"]),
+        num_proc=1,
+    )
+
+    first_is_da = sum(row["volgorde_r"][0] == "da" for row in out)
+
+    assert 150 < first_is_da < 250
+
+
+def test_ranker_candidate_columns_rotation_validated() -> None:
+    step = _make_step(
+        name="r",
+        task="ranker",
+        candidate_columns=["da", "db"],
+        order_rotation=2,
+    )
+
+    with pytest.raises(ValueError, match="order_rotation 2"):
+        dg._add_ranker_positions(_h2h_ds(3), step, num_proc=1)
+
+
+def _paid_config(**overrides) -> dg.GenerateDefinitionsConfig:
+    step = {
+        "name": "definer-paid",
+        "task": "definer",
+        "model_name": "m",
+        "provider": "openai",
+        "full_prompt_template": "p",
+    }
+    return dg.GenerateDefinitionsConfig(steps=[step], **overrides)
+
+
+def test_paid_provider_is_refused_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_client(step):
+        raise AssertionError("client must not be created")
+
+    monkeypatch.setattr(dg, "_create_client_and_runtime_options", no_client)
+
+    with pytest.raises(ValueError, match="definer-paid"):
+        dg.build_pipeline(_paid_config())
+    with pytest.raises(ValueError, match="definer-paid"):
+        dg.run_generation(_paid_config())
+
+
+def test_paid_provider_builds_when_allowed() -> None:
+    pipe = dg.build_pipeline(_paid_config(allow_paid_api=True))
+
+    assert pipe[0].provider == "openai"
+
+
 def test_run_generation_drops_position_columns_and_keeps_order(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1157,17 +1255,25 @@ STUDY_CONFIGS = sorted(
 )
 
 
+def _load_study_config(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 @pytest.mark.parametrize("path", STUDY_CONFIGS, ids=lambda p: p.name)
 def test_study_configs_build_pipelines(path: Path) -> None:
-    config = dg.GenerateDefinitionsConfig.model_validate(
-        json.loads(path.read_text(encoding="utf-8"))
-    )
+    data = _load_study_config(path)
+    data["allow_paid_api"] = True
+    config = dg.GenerateDefinitionsConfig.model_validate(data)
 
     pipe = dg.build_pipeline(config)
 
     assert len(pipe) > 0
     for step in pipe:
-        assert step.provider == "vllm-offline"
+        assert step.provider in ("vllm-offline", "openai")
+        if step.provider == "openai":
+            assert step.task == "definer"
+            llm_annotator.OpenAIRuntimeOptions(**step.client_run_kwargs)
+            continue
         assert step.post_field_renamer
         if step.schema:
             assert set(step.post_field_renamer) == set(
@@ -1179,9 +1285,49 @@ def test_study_configs_build_pipelines(path: Path) -> None:
         assert options.chat_template_kwargs
 
 
+def test_committed_study_configs_forbid_paid_api() -> None:
+    for path in STUDY_CONFIGS:
+        data = _load_study_config(path)
+        assert data.get("allow_paid_api", False) is False
+        config = dg.GenerateDefinitionsConfig.model_validate(data)
+        providers = {s.provider for s in config.steps}
+        if "openai" in providers:
+            with pytest.raises(ValueError, match="paid API"):
+                dg.build_pipeline(config)
+        else:
+            dg.build_pipeline(config)
+
+
+def test_head_to_head_config_matches_writer_configs() -> None:
+    study = STUDY_CONFIGS[0].parent
+    h2h = _load_study_config(study / "head-to-head.json")
+    writers = [
+        _load_study_config(study / name)["steps"][0]["name"]
+        for name in (
+            "writer-gemma4-26b-a4b.json",
+            "writer-qwen36-35b-a3b.json",
+        )
+    ]
+    expected = sorted(w.removeprefix("definer-") for w in writers)
+
+    assert h2h["from_hub_split"] == "eval"
+    assert h2h["hub_id"] is None
+    for step in h2h["steps"]:
+        assert step["task"] == "ranker"
+        assert (
+            sorted(
+                c.removeprefix("definitie-") for c in step["candidate_columns"]
+            )
+            == expected
+        )
+    assert [s["order_rotation"] for s in h2h["steps"]] == [0, 1] * 3
+
+
 def test_study_configs_exist() -> None:
     assert {p.name for p in STUDY_CONFIGS} == {
         "anw-judges.json",
+        "head-to-head.json",
         "writer-gemma4-26b-a4b.json",
+        "writer-openai.json",
         "writer-qwen36-35b-a3b.json",
     }

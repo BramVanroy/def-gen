@@ -243,3 +243,25 @@ def test_order_rotation_rejected_for_non_ranker_steps() -> None:
     with pytest.raises(ValueError, match="only allowed for ranker"):
         _step("d", "definer", order_rotation=1)
     assert _step("rk", "ranker", order_rotation=1).order_rotation == 1
+
+
+def test_candidate_columns_validation() -> None:
+    with pytest.raises(ValueError, match="only allowed for ranker"):
+        _step("a", "definer", candidate_columns=["x", "y"])
+    with pytest.raises(ValueError, match="2 or 3 distinct"):
+        _step("r", "ranker", candidate_columns=["x"])
+    with pytest.raises(ValueError, match="2 or 3 distinct"):
+        _step("r", "ranker", candidate_columns=["x", "x"])
+    with pytest.raises(ValueError, match="2 or 3 distinct"):
+        _step("r", "ranker", candidate_columns=["a", "b", "c", "d"])
+
+
+def test_pipeline_without_definer_needs_judges_or_explicit_rankers() -> None:
+    steps = [
+        _step("j", "judge"),
+        _step("r", "ranker", candidate_columns=["x", "y"]),
+    ]
+    assert len(Pipeline(steps)) == 2
+
+    with pytest.raises(ValueError, match="must start with a definer"):
+        Pipeline([_step("r", "ranker")])

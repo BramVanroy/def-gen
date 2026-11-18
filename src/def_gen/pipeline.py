@@ -28,8 +28,8 @@ class Step:
 
     `definition_column` is required for judge steps (the column that is judged,
     exposed to the prompt as `te-beoordelen-definitie`) and rejected for other
-    tasks. `order_rotation` is only allowed for ranker steps (see
-    `PipelineStepConfig`). Judge and feedback steps without a `post_field_renamer` get
+    tasks. `order_rotation` and `candidate_columns` are only allowed for ranker
+    steps (see `PipelineStepConfig`). Judge and feedback steps without a `post_field_renamer` get
     `{field: f"{field}_{name}"}` for every property of their schema.
     """
 
@@ -49,6 +49,7 @@ class Step:
     client_run_kwargs: dict = field(default_factory=dict)
     definition_column: str | None = None
     order_rotation: int = 0
+    candidate_columns: list[str] | None = None
 
     def __post_init__(self):
         if self.full_prompt_template and self.file_directory:
@@ -111,6 +112,19 @@ class Step:
                 "order_rotation is only allowed for ranker steps"
                 f" (step {self.name!r})."
             )
+        if self.candidate_columns is not None:
+            if self.task != Task.ranker:
+                raise ValueError(
+                    "candidate_columns is only allowed for ranker steps"
+                    f" (step {self.name!r})."
+                )
+            if len(self.candidate_columns) not in (2, 3) or len(
+                set(self.candidate_columns)
+            ) != len(self.candidate_columns):
+                raise ValueError(
+                    "candidate_columns must hold 2 or 3 distinct columns"
+                    f" (step {self.name!r})."
+                )
         if (
             self.task in (Task.judge, Task.feedback)
             and not self.post_field_renamer
@@ -167,11 +181,15 @@ class Pipeline:
 
         if not self.steps:
             raise ValueError("Pipeline must have at least one step!")
-        judge_only = all(s.task == Task.judge for s in self.steps)
-        if not judge_only and self.steps[0].task != Task.definer:
+        definer_free = all(
+            s.task == Task.judge
+            or (s.task == Task.ranker and s.candidate_columns)
+            for s in self.steps
+        )
+        if not definer_free and self.steps[0].task != Task.definer:
             raise ValueError(
                 "Pipeline must start with a definer step unless all steps"
-                " are judge steps!"
+                " are judge steps or ranker steps with candidate_columns!"
             )
         if any(s.task == Task.definer for s in self.steps[1:]):
             raise ValueError("Pipeline can only contain one definer step!")
