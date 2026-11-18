@@ -162,7 +162,7 @@ def calculate_gwet_ac1(df: pd.DataFrame, columns: Sequence[str]) -> float:
         >>> round(calculate_gwet_ac1(df, ["r1", "r2"]), 4)
         0.5294
     """
-    data = df[list(columns)].dropna()
+    data = df[list(columns)].dropna().reset_index(drop=True)
     num_raters = len(columns)
     if data.empty or data.stack().nunique() < 2:
         return float("nan")

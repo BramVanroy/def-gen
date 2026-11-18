@@ -352,3 +352,10 @@ def test_rater_metric_lists_the_implemented_metrics() -> None:
         "percent_agreement",
         "gwet_ac1",
     }
+
+
+def test_gwet_ac1_handles_duplicated_index_labels() -> None:
+    df = _small_df().iloc[[0, 0, 2, 3]]
+
+    # rows aa, aa, bb, ab: pa = 3/4, pi = (5/8, 3/8) -> 9/17 again
+    assert calculate_gwet_ac1(df, ["r1", "r2"]) == pytest.approx(9 / 17)
