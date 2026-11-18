@@ -47,4 +47,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - `instructions/judge-after-revision`.
-- The `workflow` entry in the `GenerateDefinitionsConfig` docstring (the option does not exist).
