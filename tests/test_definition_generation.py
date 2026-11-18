@@ -1330,8 +1330,8 @@ def test_head_to_head_config_matches_writer_configs() -> None:
 
 def test_study_configs_exist() -> None:
     assert {p.name for p in STUDY_CONFIGS} == {
-        "anw-judges.json",
         "head-to-head.json",
+        "scores.json",
         "writer-gemma4-26b-a4b.json",
         "writer-openai.json",
         "writer-qwen36-35b-a3b.json",

@@ -1,4 +1,11 @@
-"""Merge the definitions of several writer runs into one dataset for ranking."""
+"""Merge the definitions of several writer runs into one dataset for ranking.
+
+Example:
+    uv run python scripts/merge_writer_outputs.py \
+        outputs/study/writer-gemma4-26b-a4b \
+        outputs/study/writer-qwen36-35b-a3b \
+        --output_dir outputs/study/head-to-head-input
+"""
 
 import argparse
 import json

@@ -1,3 +1,10 @@
+"""Compute inter-rater agreement between the ranker steps of a dataset.
+
+Example:
+    uv run python scripts/rank_ira.py outputs/run/full_process_done \
+        --fout agreement.json
+"""
+
 import json
 from collections.abc import Sequence
 from functools import partial

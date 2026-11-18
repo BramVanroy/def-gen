@@ -150,19 +150,25 @@ class GenerateDefinitionsConfig(BaseModel):
 
     Args:
         from_hub_id: Optional hub dataset id or path of a local directory
-            saved with `save_to_disk` to initialize from instead of the
-            source data file.
+            saved with `save_to_disk` (for example `data/splits/anw-5ex`).
+            If a directory with that path exists, it is loaded from disk,
+            otherwise the id is loaded from the hub. If None, the data is
+            built from the source data file with `init_data`.
         from_hub_split: Split to use from the hub or local dataset.
-        num_samples: Number of examples to keep, taken as the first rows of
-            the source data file or of the hub dataset. Use None for all rows.
-        min_num_examples: Minimum number of examples per entry.
+        num_samples: Number of rows to keep, taken as the first rows of the
+            dataset (from `from_hub_id` or from `init_data`). None or a
+            non-positive value keeps all rows.
+        min_num_examples: Minimum (and shown) number of examples per entry.
+            Only used when `from_hub_id` is None.
         overwrite: Whether to delete existing step outputs before running.
         batch_size: Number of requests per annotation batch.
         num_proc: Number of workers for dataset operations.
         root_output_dir: Output directory for checkpoints and final dataset.
-        hub_id: Optional hub dataset id to push final output.
-        workflow: Workflow preset for whether revision is included.
-        steps: Optional explicit pipeline steps.
+        hub_id: Optional hub dataset id that the final dataset is pushed to
+            as a private dataset. `{num_samples}` is replaced by the number of
+            final rows. The default points to the author's namespace, so set
+            it to null (as the study configs do) to push nothing.
+        steps: Pipeline steps. `build_pipeline` raises if this is empty.
         seed: Random seed used for deterministic data transforms.
         allow_paid_api: Whether steps with the provider `openai` or
             `anthropic` may run. If False, `run_generation` raises before
@@ -331,7 +337,29 @@ def prepare_examples(
     num_examples: int = 3,
     context_words: int = 50,
 ) -> dict[str, str]:
-    """Format example sentences around the target word."""
+    r"""Format up to `num_examples` examples as a bulleted text.
+
+    The examples are shuffled in place with a fixed seed. Each example is cut
+    to `context_words` words on each side of the first word that contains the
+    target word, with "[...]" marking the cut. If no word contains it, the
+    first `context_words` words are kept.
+
+    Example:
+        `prepare_examples(["Een grote hond blaft.", "De hond slaapt."],
+        "hond", 2)` gives `{"voorbeelden": "- De hond slaapt.\n- Een grote
+        hond blaft."}` (the order depends on the seed).
+
+    Args:
+        voorbeelden: Example sentences. The list is shuffled in place.
+        word: Target word, compared in lowercase as a substring of each
+            whitespace-separated word.
+        num_examples: Number of examples to format.
+        context_words: Words of context on each side of the target word.
+
+    Returns:
+        A dict with the key `voorbeelden`, one line per example that starts
+        with "- ".
+    """
     voorbeelden_str = ""
     lc_word = word.lower()
     Random(42).shuffle(voorbeelden)
@@ -358,7 +386,27 @@ def prepare_examples(
 
 
 def shuffle_definitions(sample: dict[str, Any]) -> dict[str, Any]:
-    """Shuffle candidate definitions deterministically for ranking."""
+    """Shuffle the candidate definitions of a row for ranking.
+
+    The candidates are `definitie-v1` and `originele-definitie`, plus
+    `definitie-v2` if the row has it. The seed is a hash of the whole row, so
+    the order is reproducible for identical rows.
+
+    Example:
+        A row with two candidates can give
+        `{"random-definitie-1": <ANW text>, "random-definitie-2": <v1 text>,
+        "shuffle-order": ["originele-definitie", "definitie-v1"]}`.
+        `shuffle-order` holds the source column of each position, so
+        `shuffle-order[0]` is the origin of `random-definitie-1`. It is the
+        key that maps human or LLM choices of a position back to a source.
+
+    Args:
+        sample: Row with the candidate columns.
+
+    Returns:
+        `random-definitie-1` to `random-definitie-N` (N is 2 or 3) and
+        `shuffle-order`.
+    """
     if "definitie-v2" in sample:
         defs = [
             sample["definitie-v1"],
@@ -425,7 +473,38 @@ def init_data(
     num_proc: int | None = None,
     data_path: Path | None = DEFAULT_DATA_PATH,
 ) -> Any:
-    """Load and preprocess the ANW source dataset."""
+    """Load the ANW source file and keep one-meaning noun entries.
+
+    An entry is kept if all of these hold:
+
+    - `woordsoort` is "substantief".
+    - The definition has more than 5 words and does not contain "ook:".
+    - The lemma starts with a lowercase letter.
+    - The article has a single meaning (`artikel_meerdere_betekenissen` is
+      false).
+    - At least `min_num_examples` examples contain the lemma.
+
+    An example contains the lemma if the lowercased lemma is a substring of
+    the lowercased example, so compounds match ("huis" matches "huisdier")
+    and inflections that change the stem do not ("huizen").
+    Examples without the lemma are dropped before the count. The remaining
+    examples are shuffled with a fixed seed, and the first `min_num_examples`
+    are formatted by `prepare_examples` into the `voorbeelden` column. The
+    same number is therefore both the minimum and the number shown. The
+    definition column is renamed to `originele-definitie`.
+
+    Args:
+        num_samples: Number of rows to keep after a seeded shuffle. None or a
+            non-positive value keeps all rows.
+        min_num_examples: Minimum number of lemma-containing examples, and
+            the number of examples shown.
+        num_proc: Number of workers for dataset operations.
+        data_path: JSONL file from `scripts/extract_anw_articles.py`.
+
+    Returns:
+        The dataset with `lemmavorm`, `voorbeelden` (formatted string),
+        `originele-definitie` and the remaining metadata columns.
+    """
     ds = load_dataset(
         "json",
         data_files=[str(data_path)],
@@ -724,7 +803,28 @@ def _add_ranker_positions(ds: Any, step: Step, num_proc: int) -> Any:
 
 
 def run_generation(config: GenerateDefinitionsConfig) -> None:
-    """Run the full generation workflow for the provided config."""
+    """Run the pipeline steps of the config in order and save the result.
+
+    The source rows come from `from_hub_id` or `init_data`, limited to
+    `num_samples`. `pipeline.json` (config, steps and `run_metadata`) is
+    written to `root_output_dir`. Each step writes `<n>-<task>-<name>/done`.
+    A step whose `done` directory is non-empty and loadable is skipped and its
+    saved dataset is used, so a rerun continues after the last finished step
+    and gives the same rows as a fresh run. `overwrite` deletes the step
+    directories instead. Rows with `valid_fields=False` are dropped after each
+    step and recorded in `attrition.json` and `failed_samples.jsonl` of the
+    step directory. A revisor step only sends rows with non-empty feedback to
+    the model. The other rows keep `definitie-v1` as revised definition and
+    get `revisie-uitgevoerd=False`. The final dataset is saved to
+    `full_process_done` and pushed to `hub_id` if set.
+
+    Args:
+        config: The run configuration.
+
+    Raises:
+        ValueError: If a step uses a paid provider while `allow_paid_api` is
+            False, or if a step leaves no valid rows.
+    """
     pipe = build_pipeline(config)
     set_seed(config.seed)
 

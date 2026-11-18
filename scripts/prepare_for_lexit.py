@@ -1,3 +1,14 @@
+"""Export a ranked dataset to Excel for human evaluation in Lexit.
+
+The sheet has `betekenis_pid`, `lemmavorm`, `voorbeelden`, the shuffled
+`random-definitie-*` columns and `shuffle-order`, which maps each position
+back to its source column.
+
+Example:
+    uv run python scripts/prepare_for_lexit.py outputs/run/full_process_done \
+        lexit.xlsx --test_split_size 100
+"""
+
 from pathlib import Path
 
 from datasets import load_dataset, load_from_disk

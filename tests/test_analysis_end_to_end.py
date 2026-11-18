@@ -9,13 +9,14 @@ import pytest
 from datasets import Dataset, DatasetDict
 
 from def_gen import definition_generation as dg
-from def_gen.analysis.load import combine_runs, read_run
+from def_gen.analysis.load import combine_runs, read_run, system_for_column
 from def_gen.utils import ROOT
 
 
 WRITERS = ["gemma4-26b-a4b", "qwen36-35b-a3b"]
 RANKINGS = ["1 beter dan 2", "2 beter dan 1", "evenwaardig"]
 NUM_ITEMS = 6
+NUM_SCORED = 5
 INVALID_ANW_ITEM = "pid-3"
 
 
@@ -67,7 +68,9 @@ class _FakeAnnotator:
                         "analyse": "Goed.",
                         "score": 1 + _number(prefix, pid, field) % 5,
                     }
-            invalid = "anwjudge-gemma4" in prefix and pid == INVALID_ANW_ITEM
+            invalid = (
+                "judge-gemma4-on-anw" in prefix and pid == INVALID_ANW_ITEM
+            )
             out[f"{prefix}valid_fields"] = not invalid
             out[f"{prefix}finish_reason"] = "length" if invalid else "stop"
             return out
@@ -78,7 +81,9 @@ class _FakeAnnotator:
         return None
 
 
-def _run_config(name: str, tmp_path: Path, source: Path) -> None:
+def _run_config(
+    name: str, tmp_path: Path, source: Path, **overrides: Any
+) -> None:
     data = json.loads(
         ROOT.joinpath("config", "study", f"{name}.json").read_text(
             encoding="utf-8"
@@ -88,6 +93,7 @@ def _run_config(name: str, tmp_path: Path, source: Path) -> None:
         "root_output_dir": tmp_path / name,
         "from_hub_id": str(source),
         "num_proc": 1,
+        **overrides,
     }
     dg.run_generation(dg.GenerateDefinitionsConfig.model_validate(data))
 
@@ -122,22 +128,26 @@ def study_dirs(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
 
         for writer in WRITERS:
             _run_config(f"writer-{writer}", tmp_path, split)
-        _run_config("anw-judges", tmp_path, split)
         _load_script("merge_writer_outputs").main(
             run_dirs=[str(tmp_path / f"writer-{w}") for w in WRITERS],
             output_dir=str(tmp_path / "head-to-head-input"),
         )
-        _run_config("head-to-head", tmp_path, tmp_path / "head-to-head-input")
-    names = [*(f"writer-{w}" for w in WRITERS), "anw-judges", "head-to-head"]
+        merged = tmp_path / "head-to-head-input"
+        _run_config("head-to-head", tmp_path, merged)
+        _run_config("scores", tmp_path, merged, num_samples=NUM_SCORED)
+    names = [*(f"writer-{w}" for w in WRITERS), "head-to-head", "scores"]
     return {name: tmp_path / name for name in names}
 
 
 def test_tables_from_real_pipeline_runs(study_dirs: dict[str, Path]) -> None:
     data = combine_runs([read_run(d) for d in study_dirs.values()])
 
-    assert data.scores["item"].nunique() == NUM_ITEMS - 1
-    assert INVALID_ANW_ITEM not in set(data.pairs["item"])
-    assert data.coverage["n_dropped"].max() == 1
+    scored = {f"pid-{i}" for i in range(NUM_SCORED)} - {INVALID_ANW_ITEM}
+    assert set(data.scores["item"]) == scored
+    assert set(data.pairs["item"]) == {f"pid-{i}" for i in range(NUM_ITEMS)}
+    assert len(scored) < NUM_ITEMS
+    dropped = data.coverage.groupby("table")["n_dropped"].max()
+    assert dropped.to_dict() == {"pairs": 0, "scores": 0}
     assert set(data.scores["system"]) == {"anw", *WRITERS}
     assert set(data.scores["judge"]) == {
         "Qwen3.8-27B-FP8",
@@ -146,7 +156,11 @@ def test_tables_from_real_pipeline_runs(study_dirs: dict[str, Path]) -> None:
     }
     assert set(data.scores["criterion"]) == set(dg.JUDGE_FIELDS)
     assert data.scores["score"].between(1, 5).all()
-    assert (data.scores.groupby(["system", "judge"]).size() == 30).all()
+    assert (
+        data.scores.groupby(["system", "judge"]).size()
+        == len(scored) * len(dg.JUDGE_FIELDS)
+    ).all()
+    assert data.scores.groupby(["system", "judge"]).ngroups == 9
 
     pair_groups = data.pairs.groupby(["system_a", "system_b"])["rotation"]
     assert {k: sorted(set(v)) for k, v in pair_groups} == {
@@ -154,12 +168,44 @@ def test_tables_from_real_pipeline_runs(study_dirs: dict[str, Path]) -> None:
         ("qwen36-35b-a3b", "anw"): [0, 1],
         ("gemma4-26b-a4b", "qwen36-35b-a3b"): [0, 1],
     }
-    assert (data.pairs.groupby(["system_a", "system_b"]).size() == 30).all()
+    assert (
+        data.pairs.groupby(["system_a", "system_b"]).size()
+        == NUM_ITEMS * 3 * 2
+    ).all()
     assert set(data.definitions["system"]) == {"anw", *WRITERS}
 
     attrition = data.attrition.set_index(["run", "step"])
-    invalid = attrition.loc[("anw-judges", "anwjudge-gemma4")]
-    assert (invalid["n_in"], invalid["n_invalid"]) == (NUM_ITEMS, 1)
+    invalid = attrition.loc[("scores", "judge-gemma4-on-anw")]
+    assert (invalid["n_in"], invalid["n_invalid"]) == (NUM_SCORED, 1)
+
+
+def test_scores_config_maps_columns_to_systems() -> None:
+    config = json.loads(
+        ROOT.joinpath("config", "study", "scores.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    judge_steps = config["steps"]
+    mapped = {
+        (s["model_name"], system_for_column(s["definition_column"], None))
+        for s in judge_steps
+    }
+
+    assert {system for _, system in mapped} == {"anw", *WRITERS}
+    assert len({model for model, _ in mapped}) == 3
+    assert len(mapped) == len(judge_steps) == 9
+    assert len({s["name"] for s in judge_steps}) == 9
+    renamed = [
+        v for s in judge_steps for v in s["post_field_renamer"].values()
+    ]
+    assert len(renamed) == len(set(renamed))
+    for step in judge_steps:
+        system = system_for_column(step["definition_column"], None)
+        assert step["name"].endswith(f"-on-{system}")
+        assert all(
+            v.startswith(f"{k}_{system}_judge_")
+            for k, v in step["post_field_renamer"].items()
+        )
 
 
 def test_rotations_swap_the_shown_order(study_dirs: dict[str, Path]) -> None:

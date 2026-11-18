@@ -1,7 +1,7 @@
 {
   "from_hub_id": "data/splits/anw-5ex",
   "from_hub_split": "eval",
-  "num_samples": null,
+  "num_samples": 1000,
   "hub_id": null,
   "root_output_dir": "outputs/study/writer-gemma4-26b-a4b",
   "steps": [
@@ -25,93 +25,6 @@
         "max_completion_tokens": 512,
         "chat_template_kwargs": {
           "enable_thinking": false
-        }
-      }
-    },
-    {
-      "name": "judge-qwen38",
-      "task": "judge",
-      "model_name": "Qwen/Qwen3.8-27B-FP8",
-      "provider": "vllm-offline",
-      "file_directory": "instructions/judge",
-      "definition_column": "definitie-v1",
-      "post_field_renamer": {
-        "begrijpelijkheid": "begrijpelijkheid_judge_qwen38",
-        "betekenis": "betekenis_judge_qwen38",
-        "gebruik": "gebruik_judge_qwen38",
-        "structuur": "structuur_judge_qwen38",
-        "substitueerbaarheid": "substitueerbaarheid_judge_qwen38",
-        "correctheid": "correctheid_judge_qwen38"
-      },
-      "client_init_kwargs": {
-        "max_model_len": 8192,
-        "language_model_only": true
-      },
-      "client_run_kwargs": {
-        "temperature": 0.7,
-        "top_p": 0.8,
-        "top_k": 20,
-        "presence_penalty": 1.5,
-        "repetition_penalty": 1.0,
-        "max_completion_tokens": 2048,
-        "chat_template_kwargs": {
-          "enable_thinking": false
-        }
-      }
-    },
-    {
-      "name": "judge-gemma4",
-      "task": "judge",
-      "model_name": "google/gemma-4-31B-it-qat-w4a16-ct",
-      "provider": "vllm-offline",
-      "file_directory": "instructions/judge",
-      "definition_column": "definitie-v1",
-      "post_field_renamer": {
-        "begrijpelijkheid": "begrijpelijkheid_judge_gemma4",
-        "betekenis": "betekenis_judge_gemma4",
-        "gebruik": "gebruik_judge_gemma4",
-        "structuur": "structuur_judge_gemma4",
-        "substitueerbaarheid": "substitueerbaarheid_judge_gemma4",
-        "correctheid": "correctheid_judge_gemma4"
-      },
-      "client_init_kwargs": {
-        "max_model_len": 8192,
-        "language_model_only": true
-      },
-      "client_run_kwargs": {
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "top_k": 64,
-        "max_completion_tokens": 2048,
-        "chat_template_kwargs": {
-          "enable_thinking": false
-        }
-      }
-    },
-    {
-      "name": "judge-gptoss",
-      "task": "judge",
-      "model_name": "openai/gpt-oss-20b",
-      "provider": "vllm-offline",
-      "file_directory": "instructions/judge",
-      "definition_column": "definitie-v1",
-      "post_field_renamer": {
-        "begrijpelijkheid": "begrijpelijkheid_judge_gptoss",
-        "betekenis": "betekenis_judge_gptoss",
-        "gebruik": "gebruik_judge_gptoss",
-        "structuur": "structuur_judge_gptoss",
-        "substitueerbaarheid": "substitueerbaarheid_judge_gptoss",
-        "correctheid": "correctheid_judge_gptoss"
-      },
-      "client_init_kwargs": {
-        "max_model_len": 8192
-      },
-      "client_run_kwargs": {
-        "temperature": 1.0,
-        "top_p": 1.0,
-        "max_completion_tokens": 2048,
-        "chat_template_kwargs": {
-          "reasoning_effort": "low"
         }
       }
     },
