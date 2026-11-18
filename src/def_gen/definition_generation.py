@@ -124,7 +124,8 @@ class GenerateDefinitionsConfig(BaseModel):
     Args:
         from_hub_id: Optional hub dataset id to initialize from instead of
             the source data file.
-        num_samples: Number of sampled examples. Use None for all rows.
+        num_samples: Number of examples to keep, taken as the first rows of
+            the source data file or of the hub dataset. Use None for all rows.
         min_num_examples: Minimum number of examples per entry.
         overwrite: Whether to delete existing step outputs before running.
         batch_size: Number of requests per annotation batch.
@@ -352,6 +353,22 @@ def shuffle_definitions(sample: dict[str, Any]) -> dict[str, Any]:
     return output
 
 
+def limit_samples(ds: Any, num_samples: int | None) -> Any:
+    """Keep the first `num_samples` rows.
+
+    Args:
+        ds: Dataset to limit.
+        num_samples: Number of rows to keep. None or a non-positive value
+            keeps all rows.
+
+    Returns:
+        The limited dataset.
+    """
+    if num_samples is not None and 0 < num_samples < len(ds):
+        return ds.select(range(num_samples))
+    return ds
+
+
 def init_data(
     num_samples: int | None = 8,
     min_num_examples: int = 3,
@@ -408,10 +425,7 @@ def init_data(
         .cast_column("artikel_laatst_bewerkt", Value("string"))
     )
 
-    if num_samples is not None and num_samples > 0 and num_samples < len(ds):
-        ds = ds.select(range(num_samples))
-
-    return ds
+    return limit_samples(ds, num_samples)
 
 
 def check_rank_validity(
@@ -584,7 +598,9 @@ def run_generation(config: GenerateDefinitionsConfig) -> None:
     set_seed(config.seed)
 
     if config.from_hub_id:
-        ds = load_dataset(config.from_hub_id)["train"]
+        ds = limit_samples(
+            load_dataset(config.from_hub_id)["train"], config.num_samples
+        )
     else:
         ds = init_data(
             num_samples=config.num_samples,

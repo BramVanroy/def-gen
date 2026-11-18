@@ -8,6 +8,7 @@ from typing import ClassVar
 import llm_annotator
 import numpy as np
 import pytest
+from datasets import Dataset
 from pydantic import ValidationError
 
 from def_gen import definition_generation as dg
@@ -968,3 +969,50 @@ def test_run_generation_concats_feedback_after_last_feedback_step(
     assert pushed[0].rows[0]["feedback"] == (
         "*Feedback van reviewer 1*\n- gebruik: te vaag"
     )
+
+
+@pytest.mark.parametrize(("num_samples", "expected"), [(2, 2), (None, 4)])
+def test_run_generation_applies_num_samples_to_hub_dataset(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+    num_samples: int | None,
+    expected: int,
+) -> None:
+    hub_ds = Dataset.from_list([{"id": i} for i in range(4)])
+    monkeypatch.setattr(dg, "load_dataset", lambda hub_id: {"train": hub_ds})
+    seen: list[int] = []
+
+    def annotate(self, **kwargs):
+        seen.append(len(kwargs["dataset"]))
+        prefix = kwargs["task_prefix"]
+        return _RunDataset(
+            [
+                {
+                    **row,
+                    f"{prefix}valid_fields": True,
+                    f"{prefix}finish_reason": "stop",
+                }
+                for row in kwargs["dataset"].to_list()
+            ]
+        )
+
+    monkeypatch.setattr(scripted, "annotate_dataset", annotate)
+    monkeypatch.setattr(
+        dg,
+        "build_pipeline",
+        lambda config: _FakePipeline(
+            [_make_step(name="d", post_field_renamer={})]
+        ),
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(
+            root_output_dir=tmp_path,
+            hub_id=None,
+            from_hub_id="o/hub",
+            num_samples=num_samples,
+        )
+    )
+
+    assert seen == [expected]
