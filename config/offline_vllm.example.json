@@ -106,7 +106,8 @@
       "name": "judge-gemma-27b",
       "task": "judge",
       "model_name": "RedHatAI/gemma-3-27b-it-FP8-dynamic",
-      "file_directory": "instructions/judge-after-revision",
+      "file_directory": "instructions/judge",
+      "definition_column": "definitie-v2",
       "provider": "vllm-offline",
       "client_init_kwargs": {
         "max_model_len": 3200
@@ -154,7 +155,8 @@
       "name": "judge-qwen-32b",
       "task": "judge",
       "model_name": "RedHatAI/Qwen3-32B-FP8-dynamic",
-      "file_directory": "instructions/judge-after-revision",
+      "file_directory": "instructions/judge",
+      "definition_column": "definitie-v2",
       "provider": "vllm-offline",
       "client_init_kwargs": {
         "max_model_len": 3200,

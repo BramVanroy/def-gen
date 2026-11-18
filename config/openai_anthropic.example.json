@@ -12,7 +12,7 @@
       "name": "definer-openai",
       "task": "definer",
       "model_name": "gpt-5.4-nano",
-      "file_directory": "/home/bram/python/def-gen/instructions/definer",
+      "file_directory": "instructions/definer",
       "provider": "openai",
       "client_run_kwargs": {
         "max_completion_tokens": 384
@@ -25,7 +25,8 @@
       "name": "judge-anthropic",
       "task": "judge",
       "model_name": "claude-haiku-4-5",
-      "file_directory": "/home/bram/python/def-gen/instructions/judge",
+      "file_directory": "instructions/judge",
+      "definition_column": "definitie-v1",
       "provider": "anthropic",
       "client_run_kwargs": {
         "max_completion_tokens": 768
