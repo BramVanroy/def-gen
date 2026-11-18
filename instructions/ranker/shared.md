@@ -35,9 +35,9 @@ Je bent de eindredacteur in een lexicografisch team en bent verantwoordelijk voo
 - Geen grammaticale of spelfouten
 - Stijl is neutraal, passend bij een woordenboek
 
-Geef eerst een beknopte samenvatting in vlot Nederlands waarin je beide definities toets aan bovenstaande criteria (maximaal 100 woorden). Daarmee bepaal je dan de kwaliteit van de definties en welke van de hoogste kwaliteit is *of* ze evenwaardig zijn. Je kan als ranking dus kiezen uit "1 beter dan 2" (definitie 1 is beter dan definitie 2), "2 beter dan 1" (definitie 2 is beter dan definitie 1), of "evenwaardig" (de definities zijn van gelijke kwaliteit, bijvoorbeeld beide heel goed of even slecht).
+Geef eerst een beknopte samenvatting in vlot Nederlands waarin je beide definities toetst aan bovenstaande criteria (maximaal 100 woorden). Daarmee bepaal je dan de kwaliteit van de definities en welke van de hoogste kwaliteit is *of* ze evenwaardig zijn. Je kan als ranking dus kiezen uit "1 beter dan 2" (definitie 1 is beter dan definitie 2), "2 beter dan 1" (definitie 2 is beter dan definitie 1), of "evenwaardig" (de definities zijn van gelijke kwaliteit, bijvoorbeeld beide heel goed of even slecht).
 
-Voorbeeld 1. Defintie 2 is beter dan definitie 2:
+Voorbeeld 1. Definitie 2 is beter dan definitie 1:
 
 ```
 {{
