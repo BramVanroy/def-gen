@@ -68,6 +68,50 @@ def test_krippendorff_alpha_matches_hand_computed_value() -> None:
     )
 
 
+def test_krippendorff_alpha_interval_on_numeric_scores() -> None:
+    # units (1, 3) and (2, 2): Do = 2, De = 16/12 -> alpha = 1 - 2 / (4/3)
+    df = pd.DataFrame({"r1": [1.0, 2.0], "r2": [3.0, 2.0]})
+
+    assert calculate_krippendorff_alpha(df, ["r1", "r2"], "interval") == (
+        pytest.approx(-0.5)
+    )
+
+
+def test_krippendorff_alpha_ordinal_uses_category_order() -> None:
+    # ids 0/1/2 with counts n = (2, 3, 3); ordinal distances are
+    # d(0,1)^2 = 6.25, d(1,2)^2 = 9, d(0,2)^2 = 30.25
+    # Do = 73 / 8, De = 600 / 56 -> alpha = 1 - 511/600 = 89/600
+    order = ["B>A", "A=B", "A>B"]
+    df = pd.DataFrame(
+        {
+            "r1": ["B>A", "A=B", "A>B", "A>B"],
+            "r2": ["A=B", "A=B", "A>B", "B>A"],
+        }
+    )
+
+    ordinal = calculate_krippendorff_alpha(
+        df, ["r1", "r2"], "ordinal", category_order=order
+    )
+    swapped = calculate_krippendorff_alpha(
+        df, ["r1", "r2"], "ordinal", category_order=["A=B", "B>A", "A>B"]
+    )
+
+    assert ordinal == pytest.approx(89 / 600)
+    assert swapped != pytest.approx(ordinal)
+
+
+def test_krippendorff_alpha_ordinal_requires_order_for_strings() -> None:
+    with pytest.raises(ValueError, match="category_order"):
+        calculate_krippendorff_alpha(_small_df(), ["r1", "r2"], "ordinal")
+
+
+def test_krippendorff_alpha_rejects_labels_outside_order() -> None:
+    with pytest.raises(ValueError, match="not in category_order"):
+        calculate_krippendorff_alpha(
+            _small_df(), ["r1", "r2"], "ordinal", category_order=["a"]
+        )
+
+
 def test_percent_agreement_matches_hand_computed_value() -> None:
     # 3 of 4 rows agree
     assert calculate_percent_agreement(_small_df(), ["r1", "r2"]) == 0.75

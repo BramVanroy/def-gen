@@ -1,6 +1,7 @@
 """Agreement metrics between raters."""
 
 from collections.abc import Iterable, Sequence
+from typing import Literal
 
 import krippendorff
 import pandas as pd
@@ -71,32 +72,67 @@ def calculate_fleiss_kappa(df: pd.DataFrame, columns: Iterable[str]) -> float:
 
 
 def calculate_krippendorff_alpha(
-    df: pd.DataFrame, columns: Iterable[str]
+    df: pd.DataFrame,
+    columns: Sequence[str],
+    level_of_measurement: Literal[
+        "nominal", "ordinal", "interval", "ratio"
+    ] = "nominal",
+    category_order: Sequence | None = None,
 ) -> float:
-    """Calculate Krippendorff's alpha for nominal data with flexible rater counts.
+    """Calculate Krippendorff's alpha for any number of raters.
 
-    Krippendorff's alpha handles any number of raters, tolerates missing data,
-    and supports several measurement levels; here it is computed for nominal
-    categories without assuming normality.
+    Missing ratings (NaN or None) are allowed. String labels are mapped to
+    integer ids, in the order of `category_order` if given. For "interval" and
+    "ratio" the values are used as numbers.
 
     Args:
         df: DataFrame providing the annotation columns.
-        columns: Iterable of column names to include in the reliability
-            computation.
+        columns: Column names, one per rater.
+        level_of_measurement: One of "nominal", "ordinal", "interval" or
+            "ratio".
+        category_order: Labels from lowest to highest. Required for "ordinal"
+            on non-numeric labels, e.g. ["B>A", "A=B", "A>B"]. Ignored for
+            "interval" and "ratio".
 
     Returns:
-        float: Chance-corrected agreement score in the range [-1, 1] where:
-          * -1 indicates complete disagreement,
-          * 0 indicates chance-level agreement, and
-          * 1 indicates perfect agreement.
+        float: Chance-corrected agreement score (1 is perfect agreement, 0 is
+            chance level). NaN if fewer than two distinct values occur.
+
+    Raises:
+        ValueError: If the ordinal level is requested for non-numeric labels
+            without `category_order`, or if a label is not in `category_order`.
     """
-    categories = df[columns].stack().dropna().unique().tolist()
-    cat2id = {c: i for i, c in enumerate(categories)}
-    ratings_matrix = df[columns].map(lambda v: cat2id[v]).to_numpy()
-    alpha = krippendorff.alpha(
-        reliability_data=ratings_matrix.T, level_of_measurement="nominal"
+    data = df[list(columns)]
+    if level_of_measurement in ("interval", "ratio"):
+        values = data.astype(float)
+    elif level_of_measurement == "ordinal" and category_order is None:
+        if not all(pd.api.types.is_numeric_dtype(data[c]) for c in data):
+            raise ValueError(
+                "category_order is required for ordinal data with "
+                "non-numeric labels."
+            )
+        values = data.astype(float)
+    else:
+        categories = (
+            list(category_order)
+            if category_order is not None
+            else data.stack().dropna().unique().tolist()
+        )
+        cat2id = {c: i for i, c in enumerate(categories)}
+        values = data.map(cat2id.get).astype(float)
+        unknown = values.isna() & data.notna()
+        if unknown.to_numpy().any():
+            bad = data[unknown].stack().unique().tolist()
+            raise ValueError(f"Labels not in category_order: {bad}")
+
+    if values.stack().nunique() < 2:
+        return float("nan")
+    return float(
+        krippendorff.alpha(
+            reliability_data=values.to_numpy().T,
+            level_of_measurement=level_of_measurement,
+        )
     )
-    return alpha
 
 
 def calculate_preference_rates(
