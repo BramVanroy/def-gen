@@ -3,7 +3,11 @@ import pandas as pd
 import pytest
 from scipy.stats import wilcoxon
 
-from def_gen.analysis.scores import score_agreement, score_differences
+from def_gen.analysis.scores import (
+    _holm,
+    score_agreement,
+    score_differences,
+)
 
 
 def _scores(values: dict[tuple[str, str], list[float]]) -> pd.DataFrame:
@@ -86,3 +90,9 @@ def test_score_agreement_perfect_and_pooled() -> None:
     assert out.loc["all", "n_units"] == 10
     assert out.loc["all", "alpha"] == pytest.approx(1.0)
     assert (out["n_judges"] == 2).all()
+
+
+def test_holm_keeps_all_missing_p_values() -> None:
+    p_values = pd.Series([np.nan, np.nan])
+
+    assert _holm(p_values).isna().all()

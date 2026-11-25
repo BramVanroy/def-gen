@@ -1336,3 +1336,139 @@ def test_study_configs_exist() -> None:
         "writer-openai.json",
         "writer-qwen36-35b-a3b.json",
     }
+
+
+def test_config_accepts_missing_file_directory_and_sources() -> None:
+    step = dg.PipelineStepConfig(
+        name="d",
+        task="definer",
+        model_name="m",
+        full_prompt_template="p",
+        file_directory=None,
+    )
+
+    assert step.file_directory is None
+    assert dg.GenerateDefinitionsConfig.from_sources() == (
+        dg.GenerateDefinitionsConfig()
+    )
+
+
+@pytest.mark.parametrize(
+    ("provider", "client_cls", "extra"),
+    [
+        ("openai", "OpenAIClient", "openai"),
+        ("anthropic", "ClaudeClient", "anthropic"),
+        ("vllm", "VLLMOnlineClient", "vllm"),
+    ],
+)
+def test_create_client_reports_missing_extra(
+    monkeypatch: pytest.MonkeyPatch, provider: str, client_cls: str, extra: str
+) -> None:
+    monkeypatch.delattr(llm_annotator, client_cls)
+
+    with pytest.raises(ImportError, match=f"--extra {extra}"):
+        dg._create_client_and_runtime_options(_make_step(provider=provider))
+
+
+def test_concat_feedback_ignores_missing_and_empty_columns() -> None:
+    sample = {"gebruik_a": None, "structuur_a": "te lang", "gebruik_b": None}
+    feedback_cols = {
+        "feedback-a": ["gebruik_a", "structuur_a", "absent_a"],
+        "feedback-b": ["gebruik_b"],
+    }
+
+    out = dg.concat_feedback(sample, feedback_cols)
+
+    assert "structuur: te lang" in out["feedback"]
+    assert "gebruik" not in out["feedback"]
+    assert "reviewer 2" not in out["feedback"]
+
+
+def test_run_generation_reruns_step_with_unreadable_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    done = tmp_path / "1-definer-d" / "done"
+    done.mkdir(parents=True)
+    (done / "rows.json").write_text("not json", encoding="utf-8")
+    _patch_inputs(
+        monkeypatch,
+        _RunDataset([{"id": 0}]),
+        [_make_step(name="d", post_field_renamer={})],
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
+    )
+
+    assert scripted.num_calls == 1
+    assert json.loads((done / "rows.json").read_text("utf-8"))[0]["id"] == 0
+
+
+def test_run_generation_replaces_annotator_when_model_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    destroyed = []
+    monkeypatch.setattr(
+        scripted, "destroy", lambda self: destroyed.append(self)
+    )
+    _patch_inputs(
+        monkeypatch,
+        _RunDataset([{"id": 0}]),
+        [
+            _make_step(name="a", model_name="m1", post_field_renamer={}),
+            _make_step(name="b", model_name="m1", post_field_renamer={}),
+            _make_step(name="c", model_name="m2", post_field_renamer={}),
+        ],
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
+    )
+
+    # Once when the model changes from m1 to m2, and once after the last step.
+    assert scripted.num_calls == 3
+    assert len(destroyed) == 2
+
+
+def test_ranker_after_revisor_validates_three_places(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scripted: type[_ScriptedAnnotator],
+) -> None:
+    places = ["eerste-plaats", "tweede-plaats", "derde-plaats"]
+    scripted.new_columns = dict.fromkeys(places, "Definitie 1")
+    validate_fns = []
+    annotate = scripted.annotate_dataset
+
+    def capture(self, **kwargs):
+        validate_fns.append(kwargs["validate_fn"])
+        return annotate(self, **kwargs)
+
+    monkeypatch.setattr(scripted, "annotate_dataset", capture)
+    monkeypatch.setattr(dg, "_add_ranker_positions", lambda ds, *a: ds)
+    ranker = _make_step(
+        name="k",
+        task="ranker",
+        post_field_renamer={p: f"{p}_k" for p in places},
+    )
+    rows = [
+        {**row, "feedback": "", "originele-definitie": f"anw-{row['id']}"}
+        for row in _revisor_rows()
+    ]
+    _patch_inputs(
+        monkeypatch, _RunDataset(rows), [*_revisor_pipeline()[1:], ranker]
+    )
+
+    dg.run_generation(
+        dg.GenerateDefinitionsConfig(root_output_dir=tmp_path, hub_id=None)
+    )
+
+    validate_fn = validate_fns[-1]
+    assert validate_fn.keywords["plaatsen_cols"] == [f"{p}_k" for p in places]
+    assert validate_fn(
+        {f"{p}_k": f"Definitie {i}" for i, p in enumerate(places, 1)}
+    )
