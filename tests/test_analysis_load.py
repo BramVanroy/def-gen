@@ -8,6 +8,7 @@ from def_gen.analysis.load import (
     combine_runs,
     definitions_from_run,
     model_family,
+    normalize_steps,
     pairs_from_run,
     read_run,
     scores_from_run,
@@ -323,3 +324,35 @@ def test_combine_runs_keeps_separate_item_sets_per_table() -> None:
     assert set(combined.scores["item"]) == set(range(4))
     dropped = combined.coverage.groupby("table")["n_dropped"].max()
     assert dropped.to_dict() == {"pairs": 0, "scores": 0}
+
+
+@pytest.mark.parametrize("table", ["scores", "pairs"])
+def test_combine_runs_with_one_table(table: str) -> None:
+    sim = simulate_study(num_items=5)
+    data = AnalysisData(
+        scores=sim.scores if table == "scores" else sim.scores.head(0),
+        pairs=sim.pairs if table == "pairs" else sim.pairs.head(0),
+        definitions=sim.definitions,
+        attrition=sim.attrition,
+    )
+
+    combined = combine_runs([data])
+
+    assert set(getattr(combined, table)["item"]) == set(range(5))
+    assert set(combined.coverage["table"]) == {table}
+    assert set(combined.definitions["item"]) == set(range(5))
+
+
+def test_normalize_steps_fills_configured_steps() -> None:
+    steps = [
+        {"name": "d", "task": "definer", "model_name": "m"},
+        {"name": "j", "task": "judge", "model_name": "m"},
+    ]
+
+    normalized = normalize_steps(steps)
+
+    assert [s["idx"] for s in normalized] == [0, 1]
+    assert normalized[0]["post_field_renamer"] == {}
+    assert normalized[1]["post_field_renamer"]["gebruik"] == "gebruik_j"
+    assert normalized[1]["definition_column"] is None
+    assert "idx" not in steps[0]

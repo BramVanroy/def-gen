@@ -167,3 +167,20 @@ def test_markdown_table_formats_missing_values() -> None:
         "| 1.2e-04 |",
         "| 0.00 |",
     ]
+
+
+def test_report_without_pairs() -> None:
+    study = simulate_study(num_items=10)
+    data = AnalysisData(
+        scores=study.scores,
+        pairs=study.pairs.head(0),
+        definitions=study.definitions,
+        attrition=pd.DataFrame(),
+        coverage=pd.DataFrame(),
+    )
+
+    report = render_report(run_analysis(data, num_bootstraps=10), 10)
+
+    assert "## Win rates" not in report
+    assert "## Position bias" not in report
+    assert "## Bradley-Terry" not in report

@@ -45,3 +45,14 @@ def test_run_metadata_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(utils.subprocess, "run", no_git)
 
     assert run_metadata()["git_commit"] is None
+
+
+def test_run_metadata_without_installed_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing(package):
+        raise utils.PackageNotFoundError(package)
+
+    monkeypatch.setattr(utils, "version", missing)
+
+    assert set(run_metadata()["versions"].values()) == {None}
